@@ -1,0 +1,78 @@
+[
+  {
+    "id": "e56ca982-7d16-4a2e-b17c-915d0247be06",
+    "number": 5002,
+    "userId": "84e5c006-aea8-4088-89a1-b13417561790",
+    "status": "completada",
+    "payout": "credit",
+    "currency": "ARS",
+    "cashPercent": 50,
+    "creditPercent": 75,
+    "items": [
+      {
+        "scryfall_id": "8ee443cc-e17a-493b-9c93-1f9e141a30e4",
+        "name": "Sol Ring",
+        "set": "frc",
+        "set_name": "Reality Fracture Commander",
+        "collector_number": "21",
+        "image": "https://cards.scryfall.io/small/front/8/e/8ee443cc-e17a-493b-9c93-1f9e141a30e4.jpg?1789644446",
+        "finish": "nonfoil",
+        "condition": "NM",
+        "qty": 1,
+        "accepted": 1,
+        "unitSale": 3400,
+        "unitCash": 1700,
+        "unitCredit": 2550,
+        "source": "cardkingdom"
+      }
+    ],
+    "note": "",
+    "photosRequired": true,
+    "photosReceived": true,
+    "created_at": "2026-09-29T04:10:27.987Z",
+    "totalCash": 1700,
+    "totalCredit": 2550,
+    "total": 2550,
+    "photos_at": "2026-09-29T04:10:57.314Z",
+    "updated_at": "2026-09-29T04:11:07.096Z",
+    "adminNote": "",
+    "completed_at": "2026-09-29T04:11:07.096Z"
+  },
+  {
+    "id": "23f80ef1-73d3-467c-8571-c96040b93b0b",
+    "number": 5001,
+    "userId": "84e5c006-aea8-4088-89a1-b13417561790",
+    "status": "rechazada",
+    "payout": "cash",
+    "currency": "ARS",
+    "cashPercent": 50,
+    "creditPercent": 75,
+    "items": [
+      {
+        "scryfall_id": "8ee443cc-e17a-493b-9c93-1f9e141a30e4",
+        "name": "Sol Ring",
+        "set": "frc",
+        "set_name": "Reality Fracture Commander",
+        "collector_number": "21",
+        "image": "https://cards.scryfall.io/small/front/8/e/8ee443cc-e17a-493b-9c93-1f9e141a30e4.jpg?1789644446",
+        "finish": "nonfoil",
+        "condition": "NM",
+        "qty": 1,
+        "accepted": 1,
+        "unitSale": 3400,
+        "unitCash": 1700,
+        "unitCredit": 2550,
+        "source": "cardkingdom"
+      }
+    ],
+    "note": "",
+    "photosRequired": true,
+    "photosReceived": false,
+    "created_at": "2026-09-29T04:08:27.732Z",
+    "totalCash": 1700,
+    "totalCredit": 2550,
+    "total": 1700,
+    "adminNote": "",
+    "updated_at": "2026-09-29T04:09:04.972Z"
+  }
+]

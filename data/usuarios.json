@@ -1,0 +1,16 @@
+[
+  {
+    "id": "84e5c006-aea8-4088-89a1-b13417561790",
+    "type": "email",
+    "idx": "c9058c4816c3faa9f258e3082e882ef2269cd194ca9692a73077ef8a799ce73c",
+    "contact": "v1:NxlAnf5wt0g0uM88:D5gCmN0zcdfFgUBRcfa3Kw==:iX0dKhIPCAJSvJqevw8dIXNq1e524bgfeZ3yEA==",
+    "name": "v1:YNSlBxzeNTY6nouu:7pZnq0EtLcV86Agkcp3Frw==:CHd2yTEeZcDkf7/k",
+    "pass": "scrypt$16384$8$1$aX4kaWUZ09925Xgb1bus0A==$6KS2c/owEBEQbSwMGWiz2csXkg89eE7RNHqKMX0yMk5CMAZS/PR//Bcb4HaHtsvnJu5z7sckwPyOaabArZUXYg==",
+    "pv": 0,
+    "verified": true,
+    "created_at": "2026-09-29T03:48:51.928Z",
+    "last_login": "2026-09-29T03:48:51.928Z",
+    "verify": {},
+    "verified_at": "2026-09-29T03:49:05.017Z"
+  }
+]

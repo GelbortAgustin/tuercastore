@@ -1,0 +1,57 @@
+[
+  {
+    "id": "4b1e475c-f522-4e09-88a4-727452350ce8",
+    "number": 1001,
+    "status": "cancelado",
+    "created_at": "2026-09-29T02:50:42.686Z",
+    "currency": "ARS",
+    "customer": {
+      "name": "v1:bHU+Hu7xD49fawNz:zNJpmuKYTfM0B4nKgrpvRg==:tZNXIA==",
+      "phone": "",
+      "note": "v1:aiyvFOngHnNJBtyN:QBYAWUIigLnTzHWPtS1ZCw==:ZRxnHw=="
+    },
+    "items": [
+      {
+        "id": "32266a68-2bae-46d2-9522-131a1a004592",
+        "name": "Oblivion Ring",
+        "set": "m13",
+        "set_name": "Magic 2013",
+        "collector_number": "22",
+        "finish": "foil",
+        "foil": true,
+        "condition": "LP",
+        "lang": "es",
+        "qty": 1,
+        "price": 500
+      },
+      {
+        "id": "42d03720-29d0-43e1-9d6a-e8a274d82810",
+        "name": "Selesnya Sentry",
+        "set": "rtr",
+        "set_name": "Return to Ravnica",
+        "collector_number": "21",
+        "finish": "foil",
+        "foil": true,
+        "condition": "LP",
+        "lang": "es",
+        "qty": 1,
+        "price": 500
+      },
+      {
+        "id": "5da686d9-ab17-4b33-9b20-277f9851224c",
+        "name": "Chandra's Fury",
+        "set": "m13",
+        "set_name": "Magic 2013",
+        "collector_number": "124",
+        "finish": "nonfoil",
+        "foil": false,
+        "condition": "LP",
+        "lang": "es",
+        "qty": 1,
+        "price": 500
+      }
+    ],
+    "total": 1500,
+    "updated_at": "2026-09-29T02:51:08.715Z"
+  }
+]

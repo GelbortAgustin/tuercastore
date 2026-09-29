@@ -1,0 +1,20 @@
+[
+  {
+    "id": "0118cb88-1737-46ff-acdb-df8d84d21afa",
+    "userId": "84e5c006-aea8-4088-89a1-b13417561790",
+    "amount": 2550,
+    "reason": "Venta de cartas V-5002",
+    "ref": "e56ca982-7d16-4a2e-b17c-915d0247be06",
+    "by": "admin",
+    "created_at": "2026-09-29T04:11:07.096Z"
+  },
+  {
+    "id": "672e386f-aaf4-4566-b570-c23964562044",
+    "userId": "84e5c006-aea8-4088-89a1-b13417561790",
+    "amount": -2550,
+    "reason": "test",
+    "ref": null,
+    "by": "admin",
+    "created_at": "2026-09-29T04:11:54.508Z"
+  }
+]

@@ -1,0 +1,40 @@
+{
+  "storeName": "Tuerca Store",
+  "tagline": "Tus cartas de Magic en un solo lugar.",
+  "whatsapp": "541123869780",
+  "instagram": "",
+  "currency": "ARS",
+  "dollarRate": 1200,
+  "dollarType": "blue",
+  "autoDollar": false,
+  "markupPercent": 0,
+  "roundTo": 100,
+  "minPrice": 500,
+  "conditionFactors": {
+    "NM": 1,
+    "LP": 0.85,
+    "MP": 0.7,
+    "HP": 0.5
+  },
+  "useScryfallFallback": true,
+  "hideOutOfPrice": false,
+  "requireAccount": false,
+  "buyEnabled": true,
+  "buyCashPercent": 50,
+  "buyCreditPercent": 75,
+  "buyMinOffer": 0,
+  "buyRoundTo": 10,
+  "buyRequirePhotos": true,
+  "buyPhotosEmail": "",
+  "adminPassword": "GlobalMimilona01!",
+  "legalitiesUpdatedAt": "2026-09-29T02:46:56.640Z",
+  "verify": {
+    "smtp": {
+      "host": "smtp.gmail.com",
+      "user": "thomasgelbort@gmail.com",
+      "from": "",
+      "port": 465,
+      "pass": "v1:L7rgZjJ9KkSkJINX:BRhUAK4xdJE2eL63NSkkPA==:g6qtzkYI8+of0QjijDn2RA=="
+    }
+  }
+}
