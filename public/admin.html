@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panel · Tuerca Store</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <form class="login hidden" id="login">
+    <img src="/logo.svg" alt="">
+    <h2 style="margin:0;font-family:var(--display)">Panel de Tuerca Store</h2>
+    <input class="input" type="password" name="password" placeholder="Contraseña" autocomplete="current-password" required>
+    <button class="btn primary" type="submit">Ingresar</button>
+    <a href="/" class="hint">← Volver a la tienda</a>
+  </form>
+
+  <div id="app" class="hidden">
+    <header class="topbar">
+      <div class="inner">
+        <a class="brand" href="/admin"><img src="/logo.svg" alt=""><div><b>Tuerca <span>Store</span></b><small>Panel de administración</small></div></a>
+        <div style="flex:1"></div>
+        <a class="btn sm" href="/" target="_blank">Ver tienda ↗</a>
+        <button class="btn sm ghost" id="logout">Salir</button>
+      </div>
+    </header>
+
+    <div class="admin-wrap">
+      <div class="alert hidden" id="pwAlert">Estás usando la contraseña por defecto <b>tuerca123</b>. Cambiala en <a href="#" data-goto="config">Configuración</a>.</div>
+
+      <div class="status" id="status"></div>
+
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="agregar" aria-selected="true">Agregar cartas</button>
+        <button role="tab" data-tab="importar" aria-selected="false">Importar lista</button>
+        <button role="tab" data-tab="inventario" aria-selected="false">Inventario</button>
+        <button role="tab" data-tab="pedidos" aria-selected="false">Pedidos <span class="pill hidden" id="pendingPill"></span></button>
+        <button role="tab" data-tab="compras" aria-selected="false">Compras <span class="pill hidden" id="salesPill"></span></button>
+        <button role="tab" data-tab="clientes" aria-selected="false">Clientes</button>
+        <button role="tab" data-tab="config" aria-selected="false">Configuración</button>
+      </nav>
+
+      <!-- AGREGAR -->
+      <section data-panel="agregar">
+        <form class="card-box row-form" id="searchForm">
+          <label class="field" style="flex:3 1 280px"><span>Buscar en Scryfall</span>
+            <input class="input" name="q" list="ac" placeholder='Ej: Sol Ring · set:mh3 · t:dragon c:r · !"Lightning Bolt"' autocomplete="off" required>
+            <datalist id="ac"></datalist>
+          </label>
+          <label class="check" style="flex:0 0 auto;padding-bottom:10px"><input type="checkbox" name="prints"> Todas las ediciones</label>
+          <button class="btn primary" type="submit">Buscar</button>
+        </form>
+        <p class="hint">Acepta la <a href="https://scryfall.com/docs/syntax" target="_blank" rel="noopener">sintaxis de búsqueda de Scryfall</a>. Los precios de referencia son de Card Kingdom (USD, NM).</p>
+        <div id="searchInfo" class="muted"></div>
+        <div class="results" id="results"></div>
+        <div class="more"><button class="btn hidden" id="searchMore">Más resultados</button></div>
+      </section>
+
+      <!-- IMPORTAR -->
+      <section data-panel="importar" class="hidden">
+        <div class="card-box" style="display:grid;gap:12px">
+          <label class="field"><span>Pegá tu lista (formato Moxfield / Arena / MTGO)</span>
+            <textarea class="input" id="importText" rows="12" placeholder="4 Lightning Bolt&#10;1 Sol Ring (C21) 263&#10;2x Counterspell [MH2]&#10;1 Ragavan, Nimble Pilferer (MH2) 138 *F*"></textarea>
+          </label>
+          <div class="row-form">
+            <label class="field"><span>Condición</span><select class="input" id="importCond"></select></label>
+            <label class="field"><span>Idioma</span><select class="input" id="importLang"></select></label>
+            <label class="field"><span>Acabado por defecto</span><select class="input" id="importFinish"><option value="nonfoil">Normal</option><option value="foil">Foil</option><option value="surge">Surge Foil</option></select></label>
+            <button class="btn" id="importPreview" type="button">Previsualizar</button>
+            <button class="btn primary" id="importGo" type="button">Importar al stock</button>
+          </div>
+          <p class="hint">Sin edición se toma la impresión por defecto de Scryfall. Marcá por línea al final: <code>*F*</code> o <code>foil</code> para foil, <code>*S*</code> o <code>surge</code> para Surge Foil. Si la impresión elegida es surge, un foil se carga como Surge Foil automáticamente.</p>
+        </div>
+        <div id="importResult" style="margin-top:16px"></div>
+      </section>
+
+      <!-- INVENTARIO -->
+      <section data-panel="inventario" class="hidden">
+        <div class="row-form" style="margin-bottom:12px">
+          <input class="input" id="invFilter" placeholder="Filtrar por nombre o edición…" style="flex:2 1 240px">
+          <select class="input" id="invShow" style="flex:0 1 180px">
+            <option value="stock">Con stock</option><option value="all">Todo</option><option value="nostock">Sin stock</option><option value="noprice">Sin precio</option>
+          </select>
+          <button class="btn" id="exportCsv" type="button">Exportar CSV</button>
+        </div>
+        <div class="table-scroll">
+          <table class="t">
+            <thead><tr><th></th><th>Carta</th><th>Acabado</th><th>Cond.</th><th>Idioma</th><th>Cant.</th><th>Ref. USD</th><th>Precio fijo</th><th>Precio venta</th><th></th></tr></thead>
+            <tbody id="invBody"></tbody>
+          </table>
+        </div>
+        <p class="hint">El precio de venta se calcula solo con Card Kingdom. Completá "Precio fijo" para pisarlo en una carta puntual.</p>
+      </section>
+
+      <!-- PEDIDOS -->
+      <section data-panel="pedidos" class="hidden">
+        <div id="ordersList"></div>
+      </section>
+
+      <!-- COMPRAS (cartas que te venden los clientes) -->
+      <section data-panel="compras" class="hidden">
+        <div class="row-form" style="margin-bottom:12px">
+          <select class="input" id="salesShow" style="flex:0 1 220px">
+            <option value="open">Abiertas (pendientes y aceptadas)</option><option value="all">Todas</option>
+            <option value="completada">Completadas</option><option value="rechazada">Rechazadas / canceladas</option>
+          </select>
+          <span class="hint" style="flex:3 1 300px">Revisá las cartas en persona: podés bajar la cantidad aceptada o el valor por carta. Al <b>completar</b>, si eligió crédito se le acredita automáticamente.</span>
+        </div>
+        <div id="salesList"></div>
+      </section>
+
+      <!-- CLIENTES -->
+      <section data-panel="clientes" class="hidden">
+        <div class="row-form" style="margin-bottom:12px">
+          <input class="input" id="cliFilter" placeholder="Buscar por nombre, mail o celular…" style="flex:2 1 240px">
+        </div>
+        <div class="table-scroll">
+          <table class="t">
+            <thead><tr><th>Nombre</th><th>Contacto</th><th>Verificado</th><th>Crédito</th><th>Alta</th><th>Último ingreso</th><th>Pedidos / Ventas</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="cliBody"></tbody>
+          </table>
+        </div>
+        <p class="hint">En el disco, mail, celular y nombre están cifrados (AES-256) y las contraseñas guardadas como hash (scrypt): nadie puede verlas, ni desde acá. Si un cliente olvida su contraseña, asignale una nueva y pasásela.</p>
+      </section>
+
+      <!-- CONFIG -->
+      <section data-panel="config" class="hidden">
+        <form id="cfgForm" class="cfg-grid">
+          <div class="card-box">
+            <h3>Tienda</h3>
+            <label class="field"><span>Nombre</span><input class="input" name="storeName"></label>
+            <label class="field"><span>Subtítulo</span><input class="input" name="tagline"></label>
+            <label class="field"><span>WhatsApp para pedidos</span><input class="input" name="whatsapp" placeholder="5491122334455"><span class="hint">Código de país + área + número, sin + ni espacios.</span></label>
+          </div>
+          <div class="card-box">
+            <h3>Precios</h3>
+            <label class="field"><span>Moneda de venta</span><select class="input" name="currency"><option value="ARS">Pesos (ARS)</option><option value="USD">Dólares (USD)</option></select></label>
+            <label class="field"><span>Recargo sobre Card Kingdom (%)</span><input class="input" type="number" step="0.5" name="markupPercent"><span class="hint">Ej: -20 = 20% más barato que CK. 10 = 10% más caro.</span></label>
+            <label class="field"><span>Redondear hacia arriba a múltiplos de</span><input class="input" type="number" step="any" min="0" name="roundTo"></label>
+            <label class="field"><span>Precio mínimo por carta</span><input class="input" type="number" step="any" min="0" name="minPrice"></label>
+            <label class="check"><input type="checkbox" name="useScryfallFallback"> Si CK no tiene la carta, usar el precio de Scryfall</label>
+            <label class="check"><input type="checkbox" name="hideOutOfPrice"> Ocultar cartas sin precio</label>
+            <label class="check"><input type="checkbox" name="requireAccount"> Exigir cuenta para hacer pedidos</label>
+          </div>
+          <div class="card-box">
+            <h3>Dólar</h3>
+            <label class="field"><span>Cotización (ARS por USD)</span><input class="input" type="number" step="any" min="0" name="dollarRate"></label>
+            <div class="row-form">
+              <label class="field"><span>Tipo</span><select class="input" name="dollarType">
+                <option value="oficial">Oficial</option><option value="blue">Blue</option><option value="bolsa">MEP</option>
+                <option value="tarjeta">Tarjeta</option><option value="cripto">Cripto</option></select></label>
+              <button class="btn" type="button" id="fetchDollar">Traer cotización</button>
+            </div>
+            <label class="check"><input type="checkbox" name="autoDollar"> Actualizar automáticamente cada 6 horas</label>
+            <span class="hint" id="dollarInfo">Fuente: dolarapi.com</span>
+          </div>
+          <div class="card-box">
+            <h3>Condición</h3>
+            <p class="hint" style="margin:0">Card Kingdom informa precio por condición. Estos factores se usan sólo cuando falta.</p>
+            <div class="row-form">
+              <label class="field"><span>NM</span><input class="input" type="number" step="0.05" name="cf_NM"></label>
+              <label class="field"><span>LP</span><input class="input" type="number" step="0.05" name="cf_LP"></label>
+              <label class="field"><span>MP</span><input class="input" type="number" step="0.05" name="cf_MP"></label>
+              <label class="field"><span>HP</span><input class="input" type="number" step="0.05" name="cf_HP"></label>
+            </div>
+          </div>
+          <div class="card-box">
+            <h3>Card Kingdom</h3>
+            <div id="ckInfo" class="muted"></div>
+            <button class="btn" type="button" id="ckRefresh">Actualizar precios ahora</button>
+            <span class="hint">Se actualiza solo cada 12 horas.</span>
+          </div>
+          <div class="card-box">
+            <h3>Formatos (Scryfall)</h3>
+            <div id="legalInfo" class="muted"></div>
+            <button class="btn" type="button" id="legalRefresh">Actualizar legalidades ahora</button>
+            <span class="hint">Baneos y legalidad por formato. Se actualizan solos una vez por día.</span>
+          </div>
+          <div class="card-box">
+            <h3>Compra de cartas</h3>
+            <label class="check"><input type="checkbox" name="buyEnabled"> Mostrar "Vendé tus cartas" en la tienda</label>
+            <div class="row-form">
+              <label class="field"><span>% en dinero</span><input class="input" type="number" min="0" max="100" step="1" name="buyCashPercent"></label>
+              <label class="field"><span>% en crédito</span><input class="input" type="number" min="0" max="150" step="1" name="buyCreditPercent"></label>
+            </div>
+            <span class="hint">Sobre tu precio de venta de cada carta (sin el precio mínimo).</span>
+            <div class="row-form">
+              <label class="field"><span>No comprar si la oferta en dinero es menor a</span><input class="input" type="number" min="0" step="any" name="buyMinOffer"></label>
+              <label class="field"><span>Redondear ofertas hacia abajo a</span><input class="input" type="number" min="0" step="any" name="buyRoundTo"></label>
+            </div>
+            <label class="check"><input type="checkbox" name="buyRequirePhotos"> Exigir fotos de las cartas por mail para completar la venta</label>
+            <label class="field"><span>Mail donde recibís las fotos</span><input class="input" type="email" name="buyPhotosEmail" placeholder="si lo dejás vacío se usa el mail de envío (Gmail)"></label>
+          </div>
+          <div class="card-box">
+            <h3>Verificación de cuentas (mail)</h3>
+            <p class="hint" style="margin:0">Al registrarse, cada cliente recibe un código en su mail para confirmar que es suyo. Sin esto configurado, en tu PC funciona en <b>modo prueba</b> (el código aparece en la ventana negra); publicada, el registro queda desactivado.</p>
+            <div id="verifyStatus"></div>
+            <div class="row-form">
+              <button class="btn sm" type="button" id="gmailPreset">Usar Gmail</button>
+              <span class="hint">Activá la verificación en 2 pasos y creá una <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">contraseña de aplicación</a>.</span>
+            </div>
+            <div class="row-form">
+              <label class="field" style="flex:3 1 160px"><span>Servidor</span><input class="input" name="v_smtp_host" placeholder="smtp.gmail.com"></label>
+              <label class="field" style="flex:1 1 70px"><span>Puerto</span><input class="input" name="v_smtp_port" type="number" placeholder="465"></label>
+            </div>
+            <label class="field"><span>Usuario (tu mail)</span><input class="input" name="v_smtp_user" autocomplete="off" placeholder="tuercastore@gmail.com"></label>
+            <label class="field"><span>Contraseña de aplicación</span><input class="input" name="v_smtp_pass" type="password" autocomplete="new-password" placeholder=""><span class="hint" id="smtpPassHint"></span></label>
+            <label class="field"><span>Remitente (opcional)</span><input class="input" name="v_smtp_from" placeholder='"Tuerca Store" &lt;tuercastore@gmail.com&gt;'></label>
+            <div class="row-form">
+              <label class="field" style="flex:2 1 180px"><span>Probar envío a</span><input class="input" id="verifyTestTo" type="email" placeholder="tu mail"></label>
+              <button class="btn" type="button" id="verifyTest">Enviar prueba</button>
+            </div>
+            <span class="hint">Guardá la configuración antes de probar.</span>
+          </div>
+          <div class="card-box">
+            <h3>Respaldo</h3>
+            <p class="hint" style="margin:0">Un solo archivo con inventario, pedidos, clientes y configuración (sin la contraseña del panel). Los datos de clientes van cifrados: para restaurarlos en otro servidor hace falta la misma clave de cifrado (<code>clave-secreta.txt</code>).</p>
+            <button class="btn" type="button" id="backupDownload">Descargar respaldo</button>
+            <label class="field"><span>Restaurar desde un respaldo</span><input class="input" type="file" id="backupFile" accept=".json,application/json"></label>
+            <button class="btn danger" type="button" id="backupRestore" disabled>Restaurar (reemplaza el inventario actual)</button>
+          </div>
+          <div class="card-box" id="pwBox">
+            <h3>Seguridad</h3>
+            <label class="field"><span>Nueva contraseña del panel</span><input class="input" type="password" name="newPassword" autocomplete="new-password" minlength="6"></label>
+          </div>
+          <div style="grid-column:1/-1;display:flex;justify-content:flex-end">
+            <button class="btn primary" type="submit">Guardar configuración</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toasts"></div>
+  <script src="/common.js"></script>
+  <script src="/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tuerca Store</title>
+  <meta name="description" content="Tuerca Store — singles de Magic: The Gathering">
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="inner">
+      <a class="brand" href="/">
+        <img src="/logo.svg" alt="">
+        <div><b>Tuerca <span>Store</span></b><small id="tagline">Singles de Magic: The Gathering</small></div>
+      </a>
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" class="input" type="search" placeholder="Buscar carta, tipo o edición…" autocomplete="off">
+      </div>
+      <nav class="mainnav" aria-label="Secciones">
+        <a href="/" aria-current="page">Comprar</a>
+        <a href="/vender">Vender cartas</a>
+      </nav>
+      <div class="account">
+        <button class="btn ghost" id="accountBtn" aria-haspopup="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+          <span class="lbl" id="accountLbl">Ingresar</span>
+        </button>
+        <div class="account-menu hidden" id="accountMenu" role="menu">
+          <div class="who" id="accountWho"></div>
+          <button role="menuitem" data-acc="credito">Mi crédito de tienda</button>
+          <button role="menuitem" data-acc="pedidos">Mis pedidos</button>
+          <button role="menuitem" data-acc="ventas">Mis ventas a la tienda</button>
+          <button role="menuitem" data-acc="clave">Cambiar contraseña</button>
+          <button role="menuitem" data-acc="salir">Salir</button>
+        </div>
+      </div>
+      <button class="btn cart-btn" id="openCart" aria-label="Abrir carrito">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"/><circle cx="10" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/></svg>
+        <span class="lbl">Carrito</span>
+        <span class="count hidden" id="cartCount">0</span>
+      </button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <h1>Singles de <em>Magic</em>, listos para tu mazo.</h1>
+      <p>Precios actualizados según el mercado internacional. Armá tu pedido y coordinamos por WhatsApp.</p>
+    </div>
+    <a class="sell-banner hidden" id="sellBanner" href="/vender">
+      <b>¿Tenés cartas para vender?</b>
+      <span>Te las tomamos al <em id="bCash">50%</em> en dinero o al <em id="bCredit">75%</em> en crédito de tienda →</span>
+    </a>
+    <div class="stats">
+      <div><b id="statCards">–</b>cartas en stock</div>
+      <div><b id="statSets">–</b>ediciones</div>
+    </div>
+  </section>
+
+  <main class="layout">
+    <aside class="filters" id="filters" aria-label="Filtros">
+      <div>
+        <h3>Formato</h3>
+        <select class="input" id="fFormat"><option value="">Todos</option></select>
+        <div class="hint-sm hidden" id="formatHint">Se muestran las cartas legales en este formato. Las baneadas aparecen al final, con aviso.</div>
+      </div>
+      <div>
+        <h3>Color</h3>
+        <div class="row" id="fColors"></div>
+      </div>
+      <div>
+        <h3>Rareza</h3>
+        <div class="row" id="fRarity"></div>
+      </div>
+      <div>
+        <h3>Tipo</h3>
+        <select class="input" id="fType">
+          <option value="">Todos</option>
+          <option>Creature</option><option>Instant</option><option>Sorcery</option><option>Artifact</option>
+          <option>Enchantment</option><option>Planeswalker</option><option>Land</option><option>Battle</option>
+        </select>
+      </div>
+      <div>
+        <h3>Edición</h3>
+        <select class="input" id="fSet"><option value="">Todas</option></select>
+      </div>
+      <div>
+        <h3>Condición</h3>
+        <div class="row" id="fCond"></div>
+      </div>
+      <div>
+        <h3>Acabado</h3>
+        <div class="row" id="fFinish">
+          <button class="chip" data-finish="nonfoil" aria-pressed="false">Normal</button>
+          <button class="chip" data-finish="foil" aria-pressed="false">Foil</button>
+          <button class="chip surge-chip" data-finish="surge" aria-pressed="false">Surge Foil</button>
+        </div>
+      </div>
+      <button class="btn sm" id="clearFilters">Limpiar filtros</button>
+    </aside>
+
+    <section>
+      <div class="toolbar">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn sm filters-toggle" id="toggleFilters">Filtros</button>
+          <span class="muted" id="resultCount"></span>
+        </div>
+        <select class="input" id="sort" aria-label="Ordenar">
+          <option value="new">Más recientes</option>
+          <option value="name">Nombre A–Z</option>
+          <option value="price-asc">Precio: menor a mayor</option>
+          <option value="price-desc">Precio: mayor a menor</option>
+          <option value="set">Edición</option>
+        </select>
+      </div>
+      <div class="grid" id="grid"><div class="spinner"></div></div>
+      <div class="more"><button class="btn hidden" id="more">Ver más cartas</button></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>© <span id="year"></span> Tuerca Store · Imágenes de cartas vía <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>.</span>
+    <span>Magic: The Gathering es marca de Wizards of the Coast. Tienda no afiliada.</span>
+  </footer>
+
+  <div class="overlay" id="overlay"></div>
+
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Detalle de carta">
+    <button class="btn ghost x" data-close aria-label="Cerrar">✕</button>
+    <div id="modalBody"></div>
+  </div>
+
+  <aside class="drawer" id="drawer" aria-label="Carrito">
+    <header><h2>Tu pedido</h2><button class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
+    <div class="items" id="cartItems"></div>
+    <footer id="cartFooter">
+      <div class="total"><span class="muted">Total</span><b id="cartTotal">$ 0</b></div>
+      <form id="checkout" class="hidden" style="display:grid;gap:10px">
+        <label class="field"><span>Nombre</span><input class="input" name="name" required maxlength="120" autocomplete="name"></label>
+        <label class="field"><span>Teléfono (opcional)</span><input class="input" name="phone" maxlength="40" autocomplete="tel"></label>
+        <label class="field"><span>Nota (envío, retiro, etc.)</span><textarea class="input" name="note" maxlength="1000" rows="2"></textarea></label>
+        <label class="check credit-use hidden" id="creditUse"><input type="checkbox" name="useCredit" checked> <span>Usar mi crédito de tienda (<b id="creditAvail"></b> disponible)</span></label>
+        <div class="total hidden" id="toPayRow"><span class="muted">A pagar</span><b id="toPay"></b></div>
+        <button class="btn primary" type="submit" id="sendOrder">Enviar pedido</button>
+      </form>
+      <button class="btn primary" id="goCheckout">Continuar</button>
+    </footer>
+  </aside>
+
+  <div class="toast-wrap" id="toasts"></div>
+  <script src="/common.js"></script>
+  <script src="/cuenta.js"></script>
+  <script src="/tienda.js"></script>
+</body>
+</html>
