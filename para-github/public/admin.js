@@ -3,6 +3,8 @@ let token = store.get('tuerca-admin', null);
 let cfg = null;
 let inv = [];
 let search = { q: '', prints: false, page: 1 };
+let found = new Map();                              // cartas de la última búsqueda, por scryfall_id
+let pending = store.get('tuerca-pendientes', []);   // lista para agregar al stock de una vez
 
 async function api(path, opts = {}) {
   const r = await fetch('/api/admin' + path, {
@@ -35,7 +37,7 @@ async function start() {
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   $('#pwAlert').classList.toggle('hidden', !store.get('tuerca-default-pw', false));
   if (store.get('tuerca-env-pw', false)) $('#pwBox').innerHTML = '<h3>Seguridad</h3><p class="hint" style="margin:0">La contraseña del panel se define en el hosting con la variable <code>ADMIN_PASSWORD</code>. Para cambiarla, modificala ahí.</p>';
-  fillSelects(); loadStatus(); fillConfig();
+  fillSelects(); loadStatus(); fillConfig(); renderPending();
 }
 
 // ---------------------------------------------------------------- tabs
@@ -106,6 +108,8 @@ async function runSearch(append) {
   if (!append) { $('#results').innerHTML = '<div class="spinner"></div>'; $('#searchInfo').textContent = ''; }
   try {
     const j = await api(`/scryfall/buscar?q=${encodeURIComponent(search.q)}&prints=${search.prints ? 1 : 0}&page=${search.page}`);
+    if (!append) found = new Map();
+    j.cards.forEach((c) => found.set(c.scryfall_id, c));
     const html = j.cards.map(resultHtml).join('');
     if (append) $('#results').insertAdjacentHTML('beforeend', html); else $('#results').innerHTML = html;
     $('#searchInfo').textContent = j.total ? `${j.total.toLocaleString('es-AR')} carta${j.total === 1 ? '' : 's'} encontradas` : 'Sin resultados en Scryfall.';
@@ -150,7 +154,7 @@ function resultHtml(c) {
       <input class="input" data-f="qty" type="number" min="1" value="1" aria-label="Cantidad">
     </div>
     <div style="display:flex;gap:6px">
-      <button class="btn primary sm" data-act="add" style="flex:1">+ Agregar al stock</button>
+      <button class="btn primary sm" data-act="add" style="flex:1">+ Añadir a la lista</button>
       ${!search.prints ? `<button class="btn sm" data-act="prints" data-name="${esc(c.name)}" title="Ver todas las ediciones">Ediciones</button>` : ''}
     </div>
   </div>`;
@@ -166,11 +170,62 @@ $('#results').addEventListener('click', async (e) => {
     return runSearch(false);
   }
   const { id } = JSON.parse(box.dataset.card);
+  const c = found.get(id); if (!c) return;
   const val = (f) => $(`[data-f=${f}]`, box).value;
+  const item = { scryfall_id: id, finish: val('finish'), condition: val('condition'), lang: val('lang'), qty: Math.max(1, parseInt(val('qty'), 10) || 1) };
+  // si ya está en la lista con el mismo acabado, estado e idioma, se suma la cantidad
+  const same = pending.find((p) => p.scryfall_id === id && p.finish === item.finish && p.condition === item.condition && p.lang === item.lang);
+  if (same) same.qty += item.qty;
+  else pending.push({ ...item, name: c.name, set: c.set, collector_number: c.collector_number, image: c.image_small || c.image, usd: refFor(c, item.finish).usd });
+  savePending(); renderPending();
+  toast(`En la lista: ${c.name} ×${same ? same.qty : item.qty}`);
+});
+
+// ---------------------------------------------------------------- lista para agregar
+function savePending() { store.set('tuerca-pendientes', pending); }
+
+function renderPending() {
+  $('#pendingBox').classList.toggle('hidden', !pending.length);
+  if (!pending.length) return;
+  const total = pending.reduce((s, p) => s + p.qty, 0);
+  $('#pendingTitle').textContent = `Lista para agregar (${total} carta${total === 1 ? '' : 's'})`;
+  $('#pendingBody').innerHTML = pending.map((p, i) => `<tr data-i="${i}">
+    <td><img class="th" src="${esc(p.image || '/logo.svg')}" alt="" loading="lazy"></td>
+    <td><b>${esc(p.name)}</b><br><span class="muted">${esc(p.set.toUpperCase())} #${esc(p.collector_number)}</span></td>
+    <td>${FINISH[p.finish] || p.finish}</td>
+    <td>${esc(p.condition)}</td>
+    <td>${esc(p.lang.toUpperCase())}</td>
+    <td><input class="input" data-pk="qty" type="number" min="1" value="${p.qty}" style="width:70px"></td>
+    <td>${p.usd ? money(estimate(p.usd), cfg.currency) : '<span class="src none">Sin precio</span>'}</td>
+    <td><button class="btn ghost sm danger" data-pdel title="Quitar de la lista">✕</button></td>
+  </tr>`).join('');
+}
+
+$('#pendingBody').addEventListener('change', (e) => {
+  const el = e.target.closest('[data-pk=qty]'); if (!el) return;
+  const p = pending[el.closest('tr').dataset.i];
+  p.qty = Math.max(1, parseInt(el.value, 10) || 1);
+  savePending(); renderPending();
+});
+$('#pendingBody').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-pdel]')) return;
+  pending.splice(Number(e.target.closest('tr').dataset.i), 1);
+  savePending(); renderPending();
+});
+$('#pendingClear').addEventListener('click', () => {
+  if (!confirm('¿Vaciar la lista? No se agrega nada al stock.')) return;
+  pending = []; savePending(); renderPending();
+});
+$('#pendingGo').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
   btn.disabled = true;
   try {
-    const j = await api('/inventario', { method: 'POST', body: { scryfall_id: id, finish: val('finish'), condition: val('condition'), lang: val('lang'), qty: Number(val('qty')) || 1 } });
-    toast(`${j.merged ? 'Sumado' : 'Agregado'}: ${j.item.name} (${j.item.qty} en stock) · ${j.item.price != null ? money(j.item.price, cfg.currency) : 'sin precio'}`);
+    const items = pending.map(({ scryfall_id, finish, condition, lang, qty }) => ({ scryfall_id, finish, condition, lang, qty }));
+    const j = await api('/inventario/lote', { method: 'POST', body: { items } });
+    // las que Scryfall no encontró quedan en la lista
+    pending = pending.filter((p) => j.missing.includes(p.scryfall_id));
+    savePending(); renderPending();
+    toast(`Listo: ${j.added} nuevas, ${j.merged} sumadas a stock existente${j.missing.length ? ` · ${j.missing.length} no encontradas (quedaron en la lista)` : ''}`, !!j.missing.length);
     loadStatus();
   } catch (err) { toast(err.message, true); } finally { btn.disabled = false; }
 });

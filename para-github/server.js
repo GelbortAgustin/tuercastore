@@ -1112,6 +1112,29 @@ app.post('/api/admin/inventario', asyncH(async (req, res) => {
   res.json({ item: { ...item, ...priceOf(item) }, merged });
 }));
 
+// agregar varias cartas juntas (lista armada en "Agregar cartas")
+app.post('/api/admin/inventario/lote', asyncH(async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items.filter((x) => x?.scryfall_id) : [];
+  if (!items.length) return res.status(400).json({ error: 'La lista está vacía' });
+  if (items.length > 500) return res.status(400).json({ error: 'Máximo 500 cartas por vez' });
+  const cards = new Map();
+  const ids = [...new Set(items.map((x) => String(x.scryfall_id)))];
+  for (let i = 0; i < ids.length; i += 75) {
+    const json = await scryfall('/cards/collection', { method: 'POST', body: JSON.stringify({ identifiers: ids.slice(i, i + 75).map((id) => ({ id })) }) });
+    for (const c of json?.data || []) cards.set(c.id, mapCard(c));
+  }
+  let added = 0, merged = 0; const missing = [];
+  for (const x of items) {
+    const card = cards.get(String(x.scryfall_id));
+    if (!card) { missing.push(x.scryfall_id); continue; }
+    const r = addToInventory(card, { finish: normalizeFinish(x.finish, x.foil), condition: x.condition, lang: x.lang, qty: x.qty });
+    fixScryfallUsd(r.item);
+    r.merged ? merged++ : added++;
+  }
+  await saveInventory();
+  res.json({ added, merged, missing });
+}));
+
 // importar lista de texto (formato Arena/Moxfield/MTGO)
 app.post('/api/admin/importar', asyncH(async (req, res) => {
   const { text, condition = 'NM', lang = 'en', finish: defFinish, foil = false, preview = false } = req.body || {};

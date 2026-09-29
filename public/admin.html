@@ -56,6 +56,21 @@
           <button class="btn primary" type="submit">Buscar</button>
         </form>
         <p class="hint">Acepta la <a href="https://scryfall.com/docs/syntax" target="_blank" rel="noopener">sintaxis de búsqueda de Scryfall</a>. Los precios de referencia son de Card Kingdom (USD, NM).</p>
+        <div class="card-box hidden" id="pendingBox" style="margin-bottom:16px">
+          <div class="row-form" style="justify-content:space-between;align-items:center;margin-bottom:10px">
+            <h3 style="margin:0" id="pendingTitle">Lista para agregar</h3>
+            <div style="display:flex;gap:6px">
+              <button class="btn sm" id="pendingClear" type="button">Vaciar</button>
+              <button class="btn primary sm" id="pendingGo" type="button">Confirmar y agregar al stock</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="t">
+              <thead><tr><th></th><th>Carta</th><th>Acabado</th><th>Cond.</th><th>Idioma</th><th>Cant.</th><th>Precio venta c/u</th><th></th></tr></thead>
+              <tbody id="pendingBody"></tbody>
+            </table>
+          </div>
+        </div>
         <div id="searchInfo" class="muted"></div>
         <div class="results" id="results"></div>
         <div class="more"><button class="btn hidden" id="searchMore">Más resultados</button></div>
