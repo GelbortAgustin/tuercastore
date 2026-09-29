@@ -118,6 +118,29 @@ Todo se guarda en la carpeta `data/`:
 
 **Hacé copia de seguridad de `data/`** (o usá *Exportar CSV*).
 
+## ⚠ Seguridad con GitHub
+
+**La carpeta `data/` NUNCA se sube a GitHub.** Tiene la clave de cifrado, tus clientes, pedidos y configuración. El archivo `.gitignore` se encarga de dejarla afuera, junto con `node_modules/` y `para-github/`. Contenido correcto de `.gitignore`:
+
+```
+node_modules/
+data/
+para-github/
+*.log
+.env
+```
+
+Antes de cada `git push`, ejecutá `git status` y revisá que no aparezca `data/`.
+
+**Si alguna vez se subió `data/`:**
+1. Poné el repositorio en privado. En GitHub: *Settings → Change visibility → Make private*.
+2. Revocá la contraseña de aplicación de Gmail y creá una nueva.
+3. Cerrá la tienda y hacé doble clic en **`rotar-clave.bat`**: genera una clave de cifrado nueva y vuelve a cifrar todo. Los clientes siguen entrando con su misma contraseña.
+4. Abrí la tienda, cambiá la contraseña del panel y cargá la nueva contraseña de Gmail.
+5. Borrá el repositorio de GitHub y crealo de nuevo, privado. El historial viejo sigue conteniendo los datos, por eso hay que empezar de cero.
+
+La contraseña del panel se guarda como hash (scrypt), nunca legible.
+
 ## Publicarla en internet (Railway)
 
 La carpeta `para-github` tiene solo el código, sin tus datos ni `node_modules`. Eso es lo que se sube.

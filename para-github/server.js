@@ -12,7 +12,7 @@ import { createVerifier } from './verificacion.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // En Railway el volumen persistente se monta en RAILWAY_VOLUME_MOUNT_PATH; en tu PC se usa ./data
 const DATA = process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
-const IS_PROD = !!(process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production');
+const IS_PROD = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RENDER || process.env.NODE_ENV === 'production');
 // Si ADMIN_PASSWORD está definida en el hosting, manda sobre la guardada en config.json
 const ENV_PASSWORD = process.env.ADMIN_PASSWORD || '';
 if (!existsSync(DATA)) mkdirSync(DATA, { recursive: true });
@@ -58,7 +58,6 @@ const DEFAULT_CONFIG = {
   buyRoundTo: 10,            // redondeo hacia abajo de las ofertas
   buyRequirePhotos: true,    // exigir fotos de las cartas por mail para completar la venta
   buyPhotosEmail: '',        // mail donde se reciben las fotos (si queda vacío se usa el mail de envío)
-  adminPassword: 'tuerca123',
 };
 
 // ---------------------------------------------------------------- almacenamiento
@@ -108,6 +107,17 @@ function addCredit(userId, amount, reason, ref = null, by = 'sistema') {
   return mv;
 }
 const saveConfig = () => writeJson(FILES.config, config);
+// contraseña del panel: se guarda SOLO como hash (scrypt). Migra la versión vieja en texto plano.
+{
+  const plain = config.adminPassword;
+  if (plain || !config.adminPasswordHash) {
+    const pw = plain ? String(plain) : 'tuerca123';
+    config.adminPasswordHash = sec.hashPassword(pw);
+    config.adminPasswordDefault = pw === 'tuerca123';
+  }
+  delete config.adminPassword;
+  await saveConfig();
+}
 
 // ---------------------------------------------------------------- Card Kingdom
 const ck = { index: new Map(), updatedAt: null, count: 0, loading: false, error: null };
@@ -950,19 +960,25 @@ function auth(req, res, next) {
   next();
 }
 
-const adminPassword = () => ENV_PASSWORD || String(config.adminPassword);
+const isDefaultPassword = () => (ENV_PASSWORD ? ENV_PASSWORD === 'tuerca123' : !!config.adminPasswordDefault);
+function checkAdminPassword(pass) {
+  if (ENV_PASSWORD) {
+    const a = Buffer.from(String(pass)), b = Buffer.from(ENV_PASSWORD);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+  return sec.verifyPassword(String(pass), config.adminPasswordHash);
+}
 // bloqueo simple contra quien prueba contraseñas: 8 intentos fallidos por IP → 15 minutos afuera
 const failures = new Map(); // ip -> { n, until }
 app.post('/api/admin/login', (req, res) => {
   const ip = req.ip || 'x';
   const f = failures.get(ip);
   if (f?.until > Date.now()) return res.status(429).json({ error: 'Demasiados intentos. Probá de nuevo en unos minutos.' });
-  if (IS_PROD && adminPassword() === 'tuerca123') {
+  if (IS_PROD && isDefaultPassword()) {
     return res.status(403).json({ error: 'Por seguridad, definí la variable ADMIN_PASSWORD en Railway antes de entrar.' });
   }
   const pass = String(req.body?.password || '');
-  const a = Buffer.from(pass), b = Buffer.from(adminPassword());
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+  if (!checkAdminPassword(pass)) {
     const n = (f?.n || 0) + 1;
     failures.set(ip, { n, until: n >= 8 ? Date.now() + 15 * 60 * 1000 : 0 });
     return res.status(401).json({ error: 'Contraseña incorrecta' });
@@ -970,7 +986,7 @@ app.post('/api/admin/login', (req, res) => {
   failures.delete(ip);
   const token = crypto.randomBytes(24).toString('hex');
   sessions.set(token, Date.now() + 7 * 24 * 3600 * 1000);
-  res.json({ token, defaultPassword: adminPassword() === 'tuerca123', envPassword: !!ENV_PASSWORD });
+  res.json({ token, defaultPassword: isDefaultPassword(), envPassword: !!ENV_PASSWORD });
 });
 
 app.use('/api/admin', auth);
@@ -998,7 +1014,7 @@ app.get('/api/admin/estado', (req, res) => {
 
 // la configuración que ve el panel nunca incluye contraseñas ni tokens (solo si están cargados)
 function adminConfigView() {
-  const { adminPassword, verify = {}, ...rest } = config;
+  const { adminPassword, adminPasswordHash, adminPasswordDefault, verify = {}, ...rest } = config;
   const smtp = verify.smtp || {};
   return {
     ...rest,
@@ -1025,7 +1041,8 @@ app.put('/api/admin/config', asyncH(async (req, res) => {
   if (b.newPassword && ENV_PASSWORD) return res.status(400).json({ error: 'La contraseña se define con la variable ADMIN_PASSWORD del hosting; cambiala ahí.' });
   if (b.newPassword) {
     if (String(b.newPassword).length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
-    config.adminPassword = String(b.newPassword);
+    config.adminPasswordHash = sec.hashPassword(String(b.newPassword));
+    config.adminPasswordDefault = false;
   }
   if (b.verify && typeof b.verify === 'object') {
     const cur = config.verify || {};
@@ -1304,7 +1321,7 @@ app.patch('/api/admin/pedidos/:id', asyncH(async (req, res) => {
 
 // respaldo completo (inventario + pedidos + configuración, sin la contraseña) para mudar la tienda
 app.get('/api/admin/respaldo', (req, res) => {
-  const { adminPassword: _pw, verify: _v, ...cfg } = config; // sin contraseñas ni tokens de envío
+  const { adminPassword: _pw, adminPasswordHash: _h, adminPasswordDefault: _d, verify: _v, ...cfg } = config; // sin contraseñas ni tokens de envío
   res.setHeader('Content-Disposition', `attachment; filename="tuerca-respaldo-${new Date().toISOString().slice(0, 10)}.json"`);
   // los datos de clientes viajan CIFRADOS: para restaurarlos en otro lado hace falta la misma clave de cifrado
   res.json({ app: 'tuerca-store', version: 3, created_at: new Date().toISOString(), config: cfg, inventory, orders, users, sales, credits });
@@ -1326,7 +1343,7 @@ app.post('/api/admin/respaldo', asyncH(async (req, res) => {
   for (const i of inventory) if (!FINISHES.includes(i.finish)) { i.finish = normalizeFinish(null, i.foil); fixScryfallUsd(i); }
   orders = b.orders.filter((o) => o && o.id);
   if (b.config && typeof b.config === 'object') {
-    const { adminPassword: _pw, verify: _v, ...rest } = b.config; // la contraseña nunca viaja en el respaldo
+    const { adminPassword: _pw, adminPasswordHash: _h, adminPasswordDefault: _d, verify: _v, ...rest } = b.config; // la contraseña nunca viaja en el respaldo
     config = { ...config, ...rest };
   }
   await Promise.all([saveInventory(), saveOrders(), saveConfig(), saveUsers(), saveSales(), saveCredits()]);
@@ -1349,7 +1366,7 @@ app.get('/api/admin/exportar', (req, res) => {
 app.listen(PORT, () => {
   console.log(`\n  ⚙  ${config.storeName} funcionando en http://localhost:${PORT}`);
   console.log(`     Panel de administración: http://localhost:${PORT}/admin\n`);
-  if (adminPassword() === 'tuerca123') console.log('  ⚠  Estás usando la contraseña por defecto (tuerca123). Cambiala en Configuración.\n');
+  if (isDefaultPassword()) console.log('  ⚠  Estás usando la contraseña por defecto (tuerca123). Cambiala en Configuración.\n');
 });
 
 loadCK();

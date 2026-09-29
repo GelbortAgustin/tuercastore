@@ -1,6 +1,8 @@
 // Tuerca Store — verificación de mail con código
 //
-// · Código de 6 dígitos enviado por SMTP (por ejemplo Gmail con "contraseña de aplicación").
+// · Código de 6 dígitos enviado por SMTP (por ejemplo Gmail con "contraseña de aplicación")
+//   o por la API HTTP de Brevo (variable BREVO_API_KEY). Render (plan gratis) bloquea los puertos
+//   SMTP, así que ahí hay que usar Brevo.
 // · Modo prueba: si el mail no está configurado y la tienda NO está publicada, el código se muestra
 //   en la consola del servidor (la ventana negra) para poder probar el registro.
 //
@@ -27,10 +29,16 @@ export function createVerifier({ getConfig, decrypt, isProd, storeName }) {
         pass: process.env.SMTP_PASS || safe(smtp.pass),
         from: process.env.SMTP_FROM || smtp.from || '',
       },
+      brevoKey: process.env.BREVO_API_KEY || '',
     };
   };
 
-  const emailReady = () => { const s = cfg().smtp; return !!(s.host && s.user && s.pass); };
+  // mail del remitente: MAIL_FROM, o el "from" / usuario SMTP
+  const senderAddress = (c = cfg()) => {
+    const f = process.env.MAIL_FROM || c.smtp.from || c.smtp.user || '';
+    return (f.match(/<([^>]+)>/)?.[1] || f).trim();
+  };
+  const emailReady = () => { const c = cfg(); return !!(c.brevoKey ? senderAddress(c) : c.smtp.host && c.smtp.user && c.smtp.pass); };
   const devMode = () => !isProd && !emailReady();
 
   function status() {
@@ -47,16 +55,39 @@ export function createVerifier({ getConfig, decrypt, isProd, storeName }) {
     const s = cfg().smtp;
     const key = JSON.stringify(s);
     if (!transporter || key !== transporterKey) {
-      transporter = nodemailer.createTransport({ host: s.host, port: s.port, secure: s.port === 465, auth: { user: s.user, pass: s.pass } });
+      // timeouts cortos: si el hosting bloquea SMTP, falla en segundos en vez de colgar el registro
+      transporter = nodemailer.createTransport({
+        host: s.host, port: s.port, secure: s.port === 465, auth: { user: s.user, pass: s.pass },
+        connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000,
+      });
       transporterKey = key;
     }
     return transporter;
   }
 
+  // envía un mail por Brevo (HTTPS) si hay BREVO_API_KEY; si no, por SMTP
+  async function deliver({ to, subject, text, html, replyTo }) {
+    const c = cfg();
+    if (c.brevoKey) {
+      const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'api-key': c.brevoKey, 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          sender: { name: storeName(), email: senderAddress(c) },
+          to: [{ email: to }], subject, textContent: text, htmlContent: html,
+          ...(replyTo ? { replyTo: { email: replyTo } } : {}),
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!r.ok) throw new Error(`Brevo respondió ${r.status}: ${(await r.text()).slice(0, 300)}`);
+      return;
+    }
+    const s = c.smtp;
+    await mailer().sendMail({ from: s.from || `"${storeName()}" <${s.user}>`, to, subject, text, html, replyTo: replyTo || undefined });
+  }
+
   async function sendEmail(to, code) {
-    const s = cfg().smtp;
-    await mailer().sendMail({
-      from: s.from || `"${storeName()}" <${s.user}>`,
+    await deliver({
       to,
       subject: `${code} es tu código de ${storeName()}`,
       text: `Tu código para verificar tu cuenta en ${storeName()} es: ${code}\n\nVence en 10 minutos. Si no creaste una cuenta, ignorá este mail.`,
@@ -113,7 +144,7 @@ export function createVerifier({ getConfig, decrypt, isProd, storeName }) {
 
   // Prueba de envío desde el panel
   async function test(type, contact) {
-    if (!emailReady()) throw new Error('Completá servidor, usuario y contraseña del mail');
+    if (!emailReady()) throw new Error(cfg().brevoKey ? 'Falta el mail del remitente (MAIL_FROM)' : 'Completá servidor, usuario y contraseña del mail');
     await sendEmail(contact, '123456');
     return 'Mail de prueba enviado (código 123456).';
   }
@@ -121,11 +152,10 @@ export function createVerifier({ getConfig, decrypt, isProd, storeName }) {
   // mail libre (por ejemplo, instrucciones para mandar fotos). Devuelve false si el mail no está configurado.
   async function sendMail({ to, subject, text, html, replyTo }) {
     if (!emailReady()) return false;
-    const s = cfg().smtp;
-    await mailer().sendMail({ from: s.from || `"${storeName()}" <${s.user}>`, to, subject, text, html, replyTo: replyTo || undefined });
+    await deliver({ to, subject, text, html, replyTo });
     return true;
   }
-  const emailAddress = () => cfg().smtp.user || '';
+  const emailAddress = () => senderAddress();
 
   return { status, available, send, check, test, devMode, sendMail, emailAddress };
 }
