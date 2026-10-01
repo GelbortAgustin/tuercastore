@@ -50,6 +50,20 @@ const store = {
 
 function debounce(fn, ms = 250) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
+// Pedidos: estados y chat (lo usan la tienda y el panel)
+const ORDER_ST = { pendiente: 'Pendiente', pagado: 'Pagado', preparado: 'Listo para retirar', entregado: 'Entregado', cancelado: 'Cancelado' };
+// `me` = quién mira: 'tienda' o 'cliente'
+function chatHtml(messages = [], me = 'cliente') {
+  if (!messages.length) return '<div class="chat-empty">Todavía no hay mensajes.</div>';
+  return messages.map((m) => `<div class="msg ${m.from === me ? 'me' : ''}">
+    <small>${m.from === me ? 'Vos' : m.from === 'tienda' ? 'Tuerca Store' : 'Cliente'} · ${new Date(m.at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</small>
+    <p>${esc(m.text)}</p></div>`).join('');
+}
+function setChatLog(log, messages, me) {
+  if (log.dataset.n === String(messages.length)) return;
+  log.dataset.n = messages.length; log.innerHTML = chatHtml(messages, me); log.scrollTop = log.scrollHeight;
+}
+
 // Acabados
 const FINISH = { nonfoil: 'Normal', foil: 'Foil', surge: 'Surge Foil' };
 const finishOf = (p) => p.finish || (p.foil ? 'foil' : 'nonfoil');

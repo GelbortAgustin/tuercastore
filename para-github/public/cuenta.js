@@ -15,8 +15,34 @@ function renderAccount() {
   $('#accountLbl').textContent = u ? u.name.split(' ')[0] : state.pending ? 'Verificar cuenta' : 'Ingresar';
   $('#accountBtn').classList.toggle('logged', !!u);
   $('#accountWho').innerHTML = u ? `<b>${esc(u.name)}</b><span>${esc(u.contact)}</span>${u.credit ? `<span class="credit-pill">Crédito: ${money(u.credit, state.currency || 'ARS')}</span>` : ''}` : '';
+  renderNotices();
   if (typeof onAccountChange === 'function') onAccountChange();
 }
+
+// globito de avisos: pedidos listos para retirar + mensajes nuevos de la tienda
+function renderNotices() {
+  const n = state.user?.notifications || 0;
+  const put = (host) => {
+    if (!host) return;
+    let b = $('.nbadge', host);
+    if (!b) { b = document.createElement('span'); b.className = 'nbadge'; host.appendChild(b); }
+    b.textContent = n; b.classList.toggle('hidden', !n);
+  };
+  put($('#accountBtn')); put($('[data-acc="pedidos"]'));
+  $('#accountBtn').title = n ? `Tenés ${n} novedad${n > 1 ? 'es' : ''} en tus pedidos` : '';
+}
+async function refreshNotices() {
+  if (!state.user) return;
+  try {
+    const r = await fetch('/api/cuenta', { credentials: 'same-origin' });
+    if (!r.ok) return;
+    const j = await r.json(), before = state.user.notifications || 0;
+    state.user.notifications = j.user.notifications || 0;
+    renderNotices();
+    if (state.user.notifications > before) toast('Tenés novedades en tus pedidos');
+  } catch {}
+}
+setInterval(refreshNotices, 45000);
 
 function bindAccount() {
   $('#accountBtn').addEventListener('click', (e) => {
@@ -176,17 +202,59 @@ async function openMyOrders() {
   const r = await fetch('/api/cuenta/pedidos');
   if (!r.ok) { state.user = null; renderAccount(); closeAll(); return openAuth('ingresar'); }
   const list = await r.json();
-  const ST = { pendiente: 'Pendiente', pagado: 'Pagado', entregado: 'Entregado', cancelado: 'Cancelado' };
+  const ST = ORDER_ST;
   showModal(`<div class="myorders"><h2>Mis pedidos</h2>
-    ${list.length ? list.map((o) => `<div class="order">
+    ${list.length ? list.map((o) => `<div class="order" data-number="${o.number}">
       <header><h3>Pedido #${o.number}</h3><span class="st-${o.status}">● ${ST[o.status] || o.status}</span></header>
+      ${o.status === 'preparado' ? `<div class="ready-banner ${o.readyNew ? 'new' : ''}">✔ <span>¡Tu pedido está listo para retirar!<small>Coordiná el retiro por el chat de acá abajo.</small></span></div>` : ''}
       <div class="muted">${new Date(o.created_at).toLocaleString('es-AR')} · <b class="price" style="font-size:1rem">${money(o.total, o.currency)}</b>${o.creditUsed ? ` · crédito −${money(o.creditUsed, o.currency)} · a pagar ${money(o.toPay, o.currency)}` : ''}</div>
       <div class="mini-cards">${o.items.map((i) => `<div class="mc" title="${esc(`${i.qty}× ${i.name} · ${i.set.toUpperCase()} #${i.collector_number} · ${i.condition}`)}">
         ${i.image ? `<a href="${esc(i.image_large || i.image)}" target="_blank" rel="noopener"><img src="${esc(i.image)}" alt="${esc(i.name)}" loading="lazy"></a>` : '<span class="oc-noimg">Sin imagen</span>'}
         <span>${i.qty}× ${esc(i.name)}<small class="muted">${esc(i.set.toUpperCase())} · ${esc(i.condition)}${i.finish && i.finish !== 'nonfoil' ? ' · ' + FINISH[i.finish].toUpperCase() : ''}</small></span>
       </div>`).join('')}</div>
+      <details class="chat">
+        <summary>💬 Chat con la tienda <span class="nbadge ${o.unread ? '' : 'hidden'}" data-unread>${o.unread || ''}</span><span class="muted" data-count>${o.messages ? `${o.messages} mensaje${o.messages > 1 ? 's' : ''}` : ''}</span></summary>
+        <div class="chat-log" data-log><div class="spinner"></div></div>
+        <form class="chat-form" data-send><input class="input" name="text" maxlength="1000" placeholder="Escribí tu mensaje…" autocomplete="off" required aria-label="Mensaje"><button class="btn primary sm">Enviar</button></form>
+      </details>
     </div>`).join('') : '<div class="empty">Todavía no hiciste pedidos.</div>'}
   </div>`);
+  const root = $('.myorders');
+  const paint = (box, j) => {
+    setChatLog($('[data-log]', box), j.messages, 'cliente');
+    $('[data-unread]', box).classList.add('hidden');
+    $('[data-count]', box).textContent = j.messages.length ? `${j.messages.length} mensaje${j.messages.length > 1 ? 's' : ''}` : '';
+    if (state.user) { state.user.notifications = j.notifications || 0; renderNotices(); }
+  };
+  const load = async (box) => {
+    try {
+      const r = await fetch(`/api/cuenta/pedidos/${box.closest('.order').dataset.number}/mensajes`);
+      if (r.ok) { delete $('[data-log]', box).dataset.n; paint(box, await r.json()); }
+    } catch {}
+  };
+  root.addEventListener('toggle', (e) => { const box = e.target.closest?.('.chat'); if (box?.open) load(box); }, true);
+  root.addEventListener('submit', async (e) => {
+    const f = e.target.closest('[data-send]'); if (!f) return;
+    e.preventDefault();
+    const text = f.text.value.trim(); if (!text) return;
+    const btn = $('button', f); btn.disabled = true;
+    try {
+      const r = await fetch(`/api/cuenta/pedidos/${f.closest('.order').dataset.number}/mensajes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'No se pudo enviar el mensaje');
+      f.text.value = ''; paint(f.closest('.chat'), j);
+    } catch (err) { toast(err.message, true); }
+    finally { btn.disabled = false; f.text.focus(); }
+  });
+  // mientras la ventana esté abierta, trae los mensajes nuevos de los chats desplegados
+  const timer = setInterval(() => {
+    if (!root.isConnected || !$('#modal').classList.contains('open')) return clearInterval(timer);
+    $$('.chat[open]', root).forEach(load);
+  }, 15000);
+  // abre solo el chat con mensajes sin leer, o el del pedido listo para retirar
+  const first = $$('.chat', root).find((c) => !$('[data-unread]', c).classList.contains('hidden'));
+  if (first) first.open = true;
+  refreshNotices();
 }
 
 function openChangePassword() {

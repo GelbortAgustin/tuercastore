@@ -35,7 +35,7 @@ async function start() {
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   $('#pwAlert').classList.toggle('hidden', !store.get('tuerca-default-pw', false));
   if (store.get('tuerca-env-pw', false)) $('#pwBox').innerHTML = '<h3>Seguridad</h3><p class="hint" style="margin:0">La contraseña del panel se define en el hosting con la variable <code>ADMIN_PASSWORD</code>. Para cambiarla, modificala ahí.</p>';
-  fillSelects(); loadStatus(); fillConfig();
+  fillSelects(); loadStatus(); fillConfig(); refreshChats();
 }
 
 // ---------------------------------------------------------------- tabs
@@ -280,11 +280,12 @@ async function loadOrders() {
     if (!orders.length) { $('#ordersList').innerHTML = '<div class="empty">Todavía no hay pedidos.</div>'; return; }
     $('#ordersList').innerHTML = orders.map((o) => `<div class="order" data-id="${o.id}">
       <header>
-        <div><h3>Pedido #${o.number} <span class="st-${o.status}" style="font-size:.85rem">● ${o.status}</span></h3>
+        <div><h3>Pedido #${o.number} <span class="st-${o.status}" style="font-size:.85rem">● ${ORDER_ST[o.status] || o.status}</span></h3>
           <span class="muted">${new Date(o.created_at).toLocaleString('es-AR')} · ${esc(o.customer.name)}${o.customer.phone ? ` · ${esc(o.customer.phone)}` : ''}</span></div>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div class="order-actions">
           <b class="price">${money(o.total, o.currency)}</b>
-          <select class="input" data-status style="width:auto">${['pendiente', 'pagado', 'entregado', 'cancelado'].map((s) => `<option ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
+          ${['pendiente', 'pagado'].includes(o.status) ? '<button type="button" class="btn primary sm" data-ready title="Avisa al cliente que puede pasar a retirar">✔ Marcar preparado</button>' : ''}
+          <select class="input" data-status style="width:auto" aria-label="Estado del pedido">${['pendiente', 'pagado', 'preparado', 'entregado', 'cancelado'].map((s) => `<option ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
           ${o.customer.phone ? `<a class="btn wa sm" target="_blank" rel="noopener" href="https://wa.me/${esc(waNumber(o.customer.phone))}">WhatsApp</a>` : ''}
         </div>
       </header>
@@ -299,14 +300,76 @@ async function loadOrders() {
       </div>`).join('')}</div>
       ${o.creditUsed ? `<div class="muted" style="margin-top:6px">Crédito de tienda usado: −${money(o.creditUsed, o.currency)} · <b>A pagar: ${money(o.toPay, o.currency)}</b></div>` : ''}
       ${o.customer.note ? `<div class="oracle">${esc(o.customer.note)}</div>` : ''}
+      ${o.status === 'preparado' ? `<div class="ready-banner">✔ <span>Preparado${o.readyAt ? ' el ' + new Date(o.readyAt).toLocaleString('es-AR') : ''}.<small>${o.userId ? (o.readySeen ? 'El cliente ya vio el aviso en su perfil.' : 'El cliente todavía no vio el aviso en su perfil.') : 'Pidió sin cuenta: avisale por WhatsApp.'}</small></span></div>` : ''}
+      ${o.userId ? `<details class="chat" ${openChats.has(o.id) ? 'open' : ''}>
+        <summary>💬 Chat con el cliente <span class="nbadge ${o.unread ? '' : 'hidden'}" data-unread>${o.unread || ''}</span><span class="muted" data-count>${o.messages.length ? `${o.messages.length} mensaje${o.messages.length > 1 ? 's' : ''}` : ''}</span></summary>
+        <div class="chat-log" data-log></div>
+        <form class="chat-form" data-send><input class="input" name="text" maxlength="1000" placeholder="Escribí un mensaje para el cliente…" autocomplete="off" required aria-label="Mensaje"><button class="btn primary sm">Enviar</button></form>
+      </details>` : '<p class="hint" style="margin:8px 0 0">Pedido hecho sin cuenta: no tiene chat ni avisos en el perfil. Coordiná por WhatsApp.</p>'}
     </div>`).join('');
+    paintChats(orders);
   } catch (err) { toast(err.message, true); }
 }
-$('#ordersList').addEventListener('change', async (e) => {
-  const sel = e.target.closest('[data-status]'); if (!sel) return;
-  const id = sel.closest('.order').dataset.id;
-  try { await api(`/pedidos/${id}`, { method: 'PATCH', body: { status: sel.value } }); toast(sel.value === 'cancelado' ? 'Pedido cancelado, stock devuelto' : 'Estado actualizado'); loadOrders(); loadStatus(); }
-  catch (err) { toast(err.message, true); }
+const openChats = new Set(); // chats desplegados (se mantienen al refrescar la lista)
+function paintChats(orders) {
+  const unread = orders.reduce((n, o) => n + (o.unread || 0), 0);
+  const tab = $('[data-tab="pedidos"]');
+  if (tab) { let b = $('.nbadge', tab); if (!b) { b = document.createElement('span'); b.className = 'nbadge'; b.style.marginLeft = '6px'; tab.appendChild(b); } b.textContent = unread; b.classList.toggle('hidden', !unread); }
+  for (const o of orders) {
+    const box = $(`.order[data-id="${o.id}"] .chat`); if (!box) continue;
+    setChatLog($('[data-log]', box), o.messages, 'tienda');
+    const n = box.open ? 0 : o.unread;
+    $('[data-unread]', box).textContent = n || ''; $('[data-unread]', box).classList.toggle('hidden', !n);
+    $('[data-count]', box).textContent = o.messages.length ? `${o.messages.length} mensaje${o.messages.length > 1 ? 's' : ''}` : '';
+    if (box.open && o.unread) api(`/pedidos/${o.id}/visto`, { method: 'POST' }).catch(() => {});
+  }
+}
+async function refreshChats() {
+  if (!token || $('#app').classList.contains('hidden')) return;
+  try {
+    const orders = await api('/pedidos');
+    const shown = $$('#ordersList .order').length;
+    const visible = !$('[data-panel="pedidos"]').classList.contains('hidden');
+    if (visible && shown !== orders.length && !$('#ordersList :focus')) return loadOrders(); // entró un pedido nuevo
+    paintChats(orders);
+  } catch {}
+}
+setInterval(refreshChats, 20000);
+async function setOrderStatus(order, status) {
+  try {
+    const o = await api(`/pedidos/${order.dataset.id}`, { method: 'PATCH', body: { status } });
+    toast(status === 'cancelado' ? 'Pedido cancelado, stock devuelto'
+      : status === 'preparado' ? (o.userId ? 'Pedido preparado: el cliente ya tiene el aviso en su perfil' : 'Pedido preparado. Pidió sin cuenta: avisale por WhatsApp')
+      : 'Estado actualizado');
+    loadOrders(); loadStatus();
+  } catch (err) { toast(err.message, true); }
+}
+$('#ordersList').addEventListener('change', (e) => {
+  const sel = e.target.closest('[data-status]'); if (sel) setOrderStatus(sel.closest('.order'), sel.value);
+});
+$('#ordersList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ready]'); if (b) { b.disabled = true; setOrderStatus(b.closest('.order'), 'preparado'); }
+});
+$('#ordersList').addEventListener('toggle', (e) => {
+  const box = e.target.closest?.('.chat'); if (!box) return;
+  const id = box.closest('.order').dataset.id;
+  if (box.open) {
+    openChats.add(id);
+    const log = $('[data-log]', box); log.scrollTop = log.scrollHeight;
+    if (!$('[data-unread]', box).classList.contains('hidden')) api(`/pedidos/${id}/visto`, { method: 'POST' }).then(refreshChats).catch(() => {});
+  } else openChats.delete(id);
+}, true);
+$('#ordersList').addEventListener('submit', async (e) => {
+  const f = e.target.closest('[data-send]'); if (!f) return;
+  e.preventDefault();
+  const text = f.text.value.trim(); if (!text) return;
+  const btn = $('button', f); btn.disabled = true;
+  try {
+    const o = await api(`/pedidos/${f.closest('.order').dataset.id}/mensajes`, { method: 'POST', body: { text } });
+    f.text.value = ''; setChatLog($('[data-log]', f.closest('.chat')), o.messages, 'tienda');
+    $('[data-count]', f.closest('.chat')).textContent = `${o.messages.length} mensaje${o.messages.length > 1 ? 's' : ''}`;
+  } catch (err) { toast(err.message, true); }
+  finally { btn.disabled = false; f.text.focus(); }
 });
 
 // número para wa.me: si es un celular argentino sin código de país (10 dígitos), se agrega 549

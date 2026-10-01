@@ -566,6 +566,29 @@ function withItemImages(items = []) {
   });
 }
 
+// ---- estados, avisos y chat de los pedidos
+const ORDER_STATUS = ['pendiente', 'pagado', 'preparado', 'entregado', 'cancelado'];
+const MAX_MSGS = 300;
+const safeDec = (v) => { try { return sec.decrypt(v); } catch { return '(no se pudo leer el mensaje)'; } };
+const orderMessages = (o) => (o.messages || []).map((m) => ({ id: m.id, from: m.from, text: safeDec(m.text), at: m.at }));
+// mensajes sin leer para 'cliente' (los que escribió la tienda) o para 'tienda' (los que escribió el cliente)
+function unreadFor(o, who) {
+  const seen = who === 'cliente' ? o.seenByUser : o.seenByAdmin;
+  const other = who === 'cliente' ? 'tienda' : 'cliente';
+  return (o.messages || []).filter((m) => m.from === other && (!seen || m.at > seen)).length;
+}
+const readyNew = (o) => o.status === 'preparado' && !o.readySeen;
+// avisos que el cliente ve en su perfil: pedidos listos para retirar + mensajes nuevos de la tienda
+const userNotices = (uid) => orders.reduce((n, o) => (o.userId === uid ? n + unreadFor(o, 'cliente') + (readyNew(o) ? 1 : 0) : n), 0);
+function addMessage(o, from, text) {
+  const t = String(text || '').trim().slice(0, 1000);
+  if (!t) { const e = new Error('Escribí un mensaje'); e.status = 400; throw e; }
+  if ((o.messages || []).length >= MAX_MSGS) { const e = new Error('Este pedido ya tiene demasiados mensajes'); e.status = 400; throw e; }
+  const at = new Date().toISOString();
+  (o.messages ||= []).push({ id: crypto.randomUUID(), from, text: sec.encrypt(t), at });
+  if (from === 'cliente') o.seenByUser = at; else o.seenByAdmin = at;
+}
+
 // ---- cuentas de clientes
 const COOKIE = 'tuerca_sid';
 // sesión válida (verificada o no)
@@ -590,6 +613,7 @@ const publicUser = (u) => {
     id: u.id, name: sec.decrypt(u.name), contactType: u.type, contact: sec.maskContact(contact),
     phone: u.type === 'phone' ? contact : '', verified: !!u.verified,
     credit: creditBalance(u.id),
+    notifications: userNotices(u.id),
   };
 };
 const registerLimit = sec.rateLimiter({ max: 8, windowMs: 3600e3, lockMs: 3600e3 });
@@ -719,11 +743,42 @@ app.post('/api/cuenta/clave', (req, res) => {
 app.get('/api/cuenta/pedidos', (req, res) => {
   const u = currentUser(req);
   if (!u) return res.status(401).json({ error: 'No ingresaste' });
-  res.json(orders.filter((o) => o.userId === u.id).map((o) => ({
+  const mine = orders.filter((o) => o.userId === u.id);
+  res.json(mine.map((o) => ({
     number: o.number, status: o.status, created_at: o.created_at, total: o.total, currency: o.currency, items: withItemImages(o.items),
     creditUsed: o.creditUsed || 0, toPay: o.toPay ?? o.total,
+    readyAt: o.status === 'preparado' ? o.readyAt || null : null, readyNew: readyNew(o),
+    messages: (o.messages || []).length, unread: unreadFor(o, 'cliente'),
   })));
+  // el aviso de "listo para retirar" ya se mostró: deja de contar como novedad
+  const fresh = mine.filter(readyNew);
+  if (fresh.length) { for (const o of fresh) o.readySeen = true; saveOrders(); }
 });
+
+// chat del pedido (cliente)
+const chatLimit = sec.rateLimiter({ max: 20, windowMs: 60e3, lockMs: 60e3 });
+const myOrder = (req, u) => orders.find((o) => o.userId === u.id && String(o.number) === String(req.params.number));
+app.get('/api/cuenta/pedidos/:number/mensajes', (req, res) => {
+  const u = currentUser(req);
+  if (!u) return res.status(401).json({ error: 'No ingresaste' });
+  const o = myOrder(req, u);
+  if (!o) return res.status(404).json({ error: 'Pedido no encontrado' });
+  const had = unreadFor(o, 'cliente');
+  const messages = orderMessages(o);
+  if (had) { o.seenByUser = new Date().toISOString(); saveOrders(); }
+  res.json({ messages, notifications: userNotices(u.id) });
+});
+app.post('/api/cuenta/pedidos/:number/mensajes', asyncH(async (req, res) => {
+  const u = currentUser(req);
+  if (!u) return res.status(401).json({ error: 'No ingresaste' });
+  const o = myOrder(req, u);
+  if (!o) return res.status(404).json({ error: 'Pedido no encontrado' });
+  if (chatLimit.blocked(u.id)) return res.status(429).json({ error: 'Estás enviando mensajes muy rápido. Esperá un minuto.' });
+  chatLimit.fail(u.id);
+  try { addMessage(o, 'cliente', req.body?.text); } catch (e) { return errOut(res, e, 'No se pudo enviar el mensaje'); }
+  await saveOrders();
+  res.json({ messages: orderMessages(o), notifications: userNotices(u.id) });
+}));
 
 // ---- "Vendé tus cartas" (la tienda compra) + crédito de tienda
 const BUY_STATUS = ['pendiente', 'aceptada', 'completada', 'rechazada', 'cancelada'];
@@ -1013,7 +1068,7 @@ app.get('/api/admin/estado', (req, res) => {
       value: priced.reduce((s, { i, p }) => s + (p.price || 0) * i.qty, 0),
       noPrice: priced.filter(({ p }) => p.price == null).length,
     },
-    orders: { pending: orders.filter((o) => o.status === 'pendiente').length },
+    orders: { pending: orders.filter((o) => o.status === 'pendiente').length, unread: orders.reduce((n, o) => n + unreadFor(o, 'tienda'), 0) },
     users: users.length,
     sales: { pending: sales.filter((v) => ['pendiente', 'aceptada'].includes(v.status)).length },
     creditTotal: Math.round(users.reduce((s, u) => s + creditBalance(u.id), 0)),
@@ -1202,7 +1257,24 @@ app.post('/api/admin/legalidades/actualizar', asyncH(async (req, res) => {
   res.json({ updatedAt: legal.updatedAt, error: legal.error });
 }));
 
-app.get('/api/admin/pedidos', (req, res) => res.json(orders.map((o) => ({ ...o, items: withItemImages(o.items), customer: decryptCustomer(o.customer) }))));
+const adminOrder = (o) => ({ ...o, items: withItemImages(o.items), customer: decryptCustomer(o.customer), messages: orderMessages(o), unread: unreadFor(o, 'tienda') });
+app.get('/api/admin/pedidos', (req, res) => res.json(orders.map(adminOrder)));
+
+// chat del pedido (tienda)
+app.post('/api/admin/pedidos/:id/mensajes', asyncH(async (req, res) => {
+  const o = orders.find((x) => x.id === req.params.id);
+  if (!o) return res.status(404).json({ error: 'No encontrado' });
+  if (!o.userId) return res.status(400).json({ error: 'Este pedido se hizo sin cuenta: coordiná por WhatsApp' });
+  try { addMessage(o, 'tienda', req.body?.text); } catch (e) { return errOut(res, e, 'No se pudo enviar el mensaje'); }
+  await saveOrders();
+  res.json(adminOrder(o));
+}));
+app.post('/api/admin/pedidos/:id/visto', asyncH(async (req, res) => {
+  const o = orders.find((x) => x.id === req.params.id);
+  if (!o) return res.status(404).json({ error: 'No encontrado' });
+  if (unreadFor(o, 'tienda')) { o.seenByAdmin = new Date().toISOString(); await saveOrders(); }
+  res.json({ ok: true });
+}));
 
 // ---- clientes (el panel ve los datos descifrados; en disco siguen cifrados)
 app.get('/api/admin/clientes', (req, res) => {
@@ -1312,7 +1384,7 @@ app.patch('/api/admin/pedidos/:id', asyncH(async (req, res) => {
   const order = orders.find((o) => o.id === req.params.id);
   if (!order) return res.status(404).json({ error: 'No encontrado' });
   const status = req.body?.status;
-  if (!['pendiente', 'pagado', 'entregado', 'cancelado'].includes(status)) return res.status(400).json({ error: 'Estado inválido' });
+  if (!ORDER_STATUS.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
   if (status === 'cancelado' && order.status !== 'cancelado') {
     for (const l of order.items) { const it = inventory.find((i) => i.id === l.id); if (it) it.qty += l.qty; }
     if (order.creditUsed > 0 && order.userId) addCredit(order.userId, order.creditUsed, `Devolución: pedido #${order.number} cancelado`, order.id);
@@ -1324,9 +1396,11 @@ app.patch('/api/admin/pedidos/:id', asyncH(async (req, res) => {
       order.creditUsed = use; order.toPay = Math.max(0, order.total - use);
     }
   }
+  // "preparado": el cliente ve en su perfil el aviso de que puede pasar a retirar
+  if (status === 'preparado' && order.status !== 'preparado') { order.readyAt = new Date().toISOString(); order.readySeen = false; }
   order.status = status; order.updated_at = new Date().toISOString();
   await Promise.all([saveOrders(), saveInventory(), saveCredits()]);
-  res.json(order);
+  res.json(adminOrder(order));
 }));
 
 // respaldo completo (inventario + pedidos + configuración, sin la contraseña) para mudar la tienda

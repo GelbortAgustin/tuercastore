@@ -96,6 +96,12 @@ La legalidad de cada carta en cada formato sale de Scryfall.
   - Desde *Panel → Clientes → Ver / ajustar* sumás o restás crédito con un motivo, por ejemplo premios de torneo o correcciones. El saldo nunca puede quedar negativo.
   - El saldo se calcula a partir de un libro de movimientos (`creditos.json`), nunca se pisa un número, y entra en el respaldo.
 
+### Pedidos: "preparado", avisos y chat
+
+- En **Pedidos**, el botón **✔ Marcar preparado** (o el estado `preparado`) le avisa al cliente: en la tienda le aparece un globito rojo en su cuenta y, en **Mis pedidos**, el cartel "¡Tu pedido está listo para retirar!". El panel te muestra si ya vio el aviso.
+- Cada pedido tiene un **chat** para coordinar el retiro. Los mensajes nuevos del cliente se marcan con un número en la pestaña Pedidos; los tuyos, con el globito en la cuenta del cliente. Los mensajes se guardan cifrados.
+- Los avisos y el chat funcionan solo en pedidos hechos **con cuenta**. Si pidió sin cuenta, coordiná por WhatsApp (o activá "exigir cuenta" en Configuración).
+
 ### Cómo se calcula el precio
 
 ```

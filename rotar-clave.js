@@ -40,11 +40,12 @@ const orders = read('pedidos.json', []);
 const sales = read('ventas.json', []);
 const config = read('config.json', {});
 const dec = (v) => (v ? sec.decrypt(v) : '');
-let plainUsers, plainOrders, plainSales, smtpPass;
+let plainUsers, plainOrders, plainSales, plainMsgs, smtpPass;
 try {
   plainUsers = users.map((u) => ({ contact: dec(u.contact), name: dec(u.name) }));
   plainOrders = orders.map((o) => ({ name: dec(o.customer?.name), phone: dec(o.customer?.phone), note: dec(o.customer?.note) }));
   plainSales = sales.map((v) => dec(v.note));
+  plainMsgs = orders.map((o) => (o.messages || []).map((m) => dec(m.text))); // chat de los pedidos
   smtpPass = dec(config.verify?.smtp?.pass);
 } catch (e) {
   console.error('✖ No pude descifrar los datos con la clave actual. No cambié nada.', e.message);
@@ -63,6 +64,7 @@ users.forEach((u, i) => {
   u.pv = (u.pv || 0) + 1; // cierra las sesiones abiertas
 });
 orders.forEach((o, i) => {
+  (o.messages || []).forEach((m, k) => { m.text = sec.encrypt(plainMsgs[i][k]); });
   if (!o.customer) return;
   o.customer = { name: sec.encrypt(plainOrders[i].name), phone: sec.encrypt(plainOrders[i].phone), note: sec.encrypt(plainOrders[i].note) };
 });
