@@ -3,8 +3,6 @@ let token = store.get('tuerca-admin', null);
 let cfg = null;
 let inv = [];
 let search = { q: '', prints: false, page: 1 };
-let found = new Map();                              // cartas de la última búsqueda, por scryfall_id
-let pending = store.get('tuerca-pendientes', []);   // lista para agregar al stock de una vez
 
 async function api(path, opts = {}) {
   const r = await fetch('/api/admin' + path, {
@@ -37,7 +35,7 @@ async function start() {
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   $('#pwAlert').classList.toggle('hidden', !store.get('tuerca-default-pw', false));
   if (store.get('tuerca-env-pw', false)) $('#pwBox').innerHTML = '<h3>Seguridad</h3><p class="hint" style="margin:0">La contraseña del panel se define en el hosting con la variable <code>ADMIN_PASSWORD</code>. Para cambiarla, modificala ahí.</p>';
-  fillSelects(); loadStatus(); fillConfig(); renderPending();
+  fillSelects(); loadStatus(); fillConfig();
 }
 
 // ---------------------------------------------------------------- tabs
@@ -108,8 +106,6 @@ async function runSearch(append) {
   if (!append) { $('#results').innerHTML = '<div class="spinner"></div>'; $('#searchInfo').textContent = ''; }
   try {
     const j = await api(`/scryfall/buscar?q=${encodeURIComponent(search.q)}&prints=${search.prints ? 1 : 0}&page=${search.page}`);
-    if (!append) found = new Map();
-    j.cards.forEach((c) => found.set(c.scryfall_id, c));
     const html = j.cards.map(resultHtml).join('');
     if (append) $('#results').insertAdjacentHTML('beforeend', html); else $('#results').innerHTML = html;
     $('#searchInfo').textContent = j.total ? `${j.total.toLocaleString('es-AR')} carta${j.total === 1 ? '' : 's'} encontradas` : 'Sin resultados en Scryfall.';
@@ -144,7 +140,7 @@ function resultHtml(c) {
   return `<div class="res" data-card='${data}'>
     <img src="${esc(c.image || '/logo.svg')}" alt="${esc(c.name)}" loading="lazy">
     <div class="n">${esc(c.name)}</div>
-    <div class="m">${setIcon(c.set, c.rarity)} ${esc(c.set_name)} · ${esc(c.set.toUpperCase())} #${esc(c.collector_number)} ${c.lang !== 'en' ? `<span class="badge">${esc(c.lang.toUpperCase())}</span>` : ''}</div>
+    <div class="m">${setIcon(c.set, c.rarity)}<span>${esc(c.set_name)} · ${esc(c.set.toUpperCase())} #${esc(c.collector_number)} ${c.lang !== 'en' ? `<span class="badge">${esc(c.lang.toUpperCase())}</span>` : ''}</span></div>
     ${c.surgePrint ? '<div class="m"><span class="badge surge">SURGE FOIL</span> impresión surge</div>' : ''}
     <div class="ckp${opts.length > 2 ? ' three' : ''}">${opts.map((f) => ckBox(c, f)).join('')}</div>
     <div class="f">
@@ -153,8 +149,8 @@ function resultHtml(c) {
       <select class="input" data-f="lang" aria-label="Idioma">${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${k === c.lang ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <input class="input" data-f="qty" type="number" min="1" value="1" aria-label="Cantidad">
     </div>
-    <div style="display:flex;gap:6px">
-      <button class="btn primary sm" data-act="add" style="flex:1">+ Añadir a la lista</button>
+    <div class="act-row">
+      <button class="btn primary sm" data-act="add">+ Agregar al stock</button>
       ${!search.prints ? `<button class="btn sm" data-act="prints" data-name="${esc(c.name)}" title="Ver todas las ediciones">Ediciones</button>` : ''}
     </div>
   </div>`;
@@ -170,62 +166,11 @@ $('#results').addEventListener('click', async (e) => {
     return runSearch(false);
   }
   const { id } = JSON.parse(box.dataset.card);
-  const c = found.get(id); if (!c) return;
   const val = (f) => $(`[data-f=${f}]`, box).value;
-  const item = { scryfall_id: id, finish: val('finish'), condition: val('condition'), lang: val('lang'), qty: Math.max(1, parseInt(val('qty'), 10) || 1) };
-  // si ya está en la lista con el mismo acabado, estado e idioma, se suma la cantidad
-  const same = pending.find((p) => p.scryfall_id === id && p.finish === item.finish && p.condition === item.condition && p.lang === item.lang);
-  if (same) same.qty += item.qty;
-  else pending.push({ ...item, name: c.name, set: c.set, collector_number: c.collector_number, image: c.image_small || c.image, usd: refFor(c, item.finish).usd });
-  savePending(); renderPending();
-  toast(`En la lista: ${c.name} ×${same ? same.qty : item.qty}`);
-});
-
-// ---------------------------------------------------------------- lista para agregar
-function savePending() { store.set('tuerca-pendientes', pending); }
-
-function renderPending() {
-  $('#pendingBox').classList.toggle('hidden', !pending.length);
-  if (!pending.length) return;
-  const total = pending.reduce((s, p) => s + p.qty, 0);
-  $('#pendingTitle').textContent = `Lista para agregar (${total} carta${total === 1 ? '' : 's'})`;
-  $('#pendingBody').innerHTML = pending.map((p, i) => `<tr data-i="${i}">
-    <td><img class="th" src="${esc(p.image || '/logo.svg')}" alt="" loading="lazy"></td>
-    <td><b>${esc(p.name)}</b><br><span class="muted">${esc(p.set.toUpperCase())} #${esc(p.collector_number)}</span></td>
-    <td>${FINISH[p.finish] || p.finish}</td>
-    <td>${esc(p.condition)}</td>
-    <td>${esc(p.lang.toUpperCase())}</td>
-    <td><input class="input" data-pk="qty" type="number" min="1" value="${p.qty}" style="width:70px"></td>
-    <td>${p.usd ? money(estimate(p.usd), cfg.currency) : '<span class="src none">Sin precio</span>'}</td>
-    <td><button class="btn ghost sm danger" data-pdel title="Quitar de la lista">✕</button></td>
-  </tr>`).join('');
-}
-
-$('#pendingBody').addEventListener('change', (e) => {
-  const el = e.target.closest('[data-pk=qty]'); if (!el) return;
-  const p = pending[el.closest('tr').dataset.i];
-  p.qty = Math.max(1, parseInt(el.value, 10) || 1);
-  savePending(); renderPending();
-});
-$('#pendingBody').addEventListener('click', (e) => {
-  if (!e.target.closest('[data-pdel]')) return;
-  pending.splice(Number(e.target.closest('tr').dataset.i), 1);
-  savePending(); renderPending();
-});
-$('#pendingClear').addEventListener('click', () => {
-  if (!confirm('¿Vaciar la lista? No se agrega nada al stock.')) return;
-  pending = []; savePending(); renderPending();
-});
-$('#pendingGo').addEventListener('click', async (e) => {
-  const btn = e.currentTarget;
   btn.disabled = true;
   try {
-    const items = pending.map(({ scryfall_id, finish, condition, lang, qty }) => ({ scryfall_id, finish, condition, lang, qty }));
-    const j = await api('/inventario/lote', { method: 'POST', body: { items } });
-    // las que Scryfall no encontró quedan en la lista
-    pending = pending.filter((p) => j.missing.includes(p.scryfall_id));
-    savePending(); renderPending();
-    toast(`Listo: ${j.added} nuevas, ${j.merged} sumadas a stock existente${j.missing.length ? ` · ${j.missing.length} no encontradas (quedaron en la lista)` : ''}`, !!j.missing.length);
+    const j = await api('/inventario', { method: 'POST', body: { scryfall_id: id, finish: val('finish'), condition: val('condition'), lang: val('lang'), qty: Number(val('qty')) || 1 } });
+    toast(`${j.merged ? 'Sumado' : 'Agregado'}: ${j.item.name} (${j.item.qty} en stock) · ${j.item.price != null ? money(j.item.price, cfg.currency) : 'sin precio'}`);
     loadStatus();
   } catch (err) { toast(err.message, true); } finally { btn.disabled = false; }
 });
@@ -343,7 +288,16 @@ async function loadOrders() {
           ${o.customer.phone ? `<a class="btn wa sm" target="_blank" rel="noopener" href="https://wa.me/${esc(waNumber(o.customer.phone))}">WhatsApp</a>` : ''}
         </div>
       </header>
-      <ul>${o.items.map((i) => `<li>${i.qty}× ${esc(i.name)} <span class="muted">${esc(i.set.toUpperCase())} #${esc(i.collector_number)} · ${esc(i.condition)}${finishOf(i) !== 'nonfoil' ? ' · ' + FINISH[finishOf(i)].toUpperCase() : ''}</span> — ${money(i.price * i.qty, o.currency)}</li>`).join('')}</ul>
+      <div class="order-cards">${o.items.map((i) => `<div class="oc">
+        <button type="button" class="oc-img" data-zoom="${esc(i.image_large || i.image || '')}" data-caption="${esc(`${i.qty}× ${i.name} · ${i.set.toUpperCase()} #${i.collector_number} · ${i.condition}${finishOf(i) !== 'nonfoil' ? ' · ' + FINISH[finishOf(i)] : ''}`)}" aria-label="Ver ${esc(i.name)}" ${i.image ? '' : 'disabled'}>
+          ${i.image ? `<span class="fx-card ${finishOf(i) === 'surge' ? 'surge' : finishOf(i) === 'foil' ? 'foil' : ''}"><img src="${esc(i.image)}" alt="" loading="lazy">${finishOf(i) === 'surge' ? '<span class="fx-sparkle"></span>' : ''}</span>` : '<span class="oc-noimg">Sin imagen</span>'}
+          ${i.qty > 1 ? `<span class="oc-qty">×${i.qty}</span>` : ''}
+        </button>
+        <div class="oc-n">${esc(i.name)}</div>
+        <div class="oc-m">${esc(i.set.toUpperCase())} #${esc(i.collector_number)} · ${esc(i.condition)} ${finishBadge(i)}</div>
+        <div class="oc-p">${i.qty}× ${money(i.price, o.currency)} = <b>${money(i.price * i.qty, o.currency)}</b></div>
+      </div>`).join('')}</div>
+      ${o.creditUsed ? `<div class="muted" style="margin-top:6px">Crédito de tienda usado: −${money(o.creditUsed, o.currency)} · <b>A pagar: ${money(o.toPay, o.currency)}</b></div>` : ''}
       ${o.customer.note ? `<div class="oracle">${esc(o.customer.note)}</div>` : ''}
     </div>`).join('');
   } catch (err) { toast(err.message, true); }
@@ -469,7 +423,7 @@ function renderSales() {
     </header>
     <div class="table-scroll" style="max-height:none"><table class="t"><thead><tr><th></th><th>Carta</th><th>Pidió</th><th>Acepto</th><th>$ dinero c/u</th><th>$ crédito c/u</th><th>Subtotal</th></tr></thead><tbody>
     ${v.items.map((l, i) => `<tr data-idx="${i}">
-      <td><img class="th" src="${esc(l.image)}" alt=""></td>
+      <td><img class="th zoomable" src="${esc(l.image)}" alt="" data-zoom="${esc(l.image)}" data-caption="${esc(`${l.name} · ${l.set.toUpperCase()} #${l.collector_number} · ${l.condition}`)}"></td>
       <td><b>${esc(l.name)}</b><br><span class="muted">${esc(l.set.toUpperCase())} #${esc(l.collector_number)} · ${esc(l.condition)}${l.finish !== 'nonfoil' ? ' · ' + FINISH[l.finish].toUpperCase() : ''}${l.source === 'scryfall' ? ' · <span class="src scryfall">precio Scryfall</span>' : ''}</span></td>
       <td>${l.qty}</td>
       <td>${open ? `<input class="input" type="number" min="0" max="${l.qty}" value="${l.accepted}" data-e="accepted" style="width:64px">` : l.accepted}</td>
@@ -630,6 +584,21 @@ $('#ckRefresh').addEventListener('click', async (e) => {
   catch (err) { toast(err.message, true); }
   finally { e.target.disabled = false; e.target.textContent = 'Actualizar precios ahora'; }
 });
+
+// ---------------------------------------------------------------- vista previa de cartas (pedidos y compras)
+function openZoom(src, caption) {
+  if (!src) return;
+  const box = $('#zoom');
+  $('#zoomImg').src = src; $('#zoomCap').textContent = caption || '';
+  box.classList.remove('hidden'); $('#zoomClose').focus();
+}
+function closeZoom() { $('#zoom').classList.add('hidden'); $('#zoomImg').src = ''; }
+document.addEventListener('click', (e) => {
+  const z = e.target.closest('[data-zoom]');
+  if (z) { e.preventDefault(); return openZoom(z.dataset.zoom, z.dataset.caption); }
+  if (e.target.id === 'zoom' || e.target.closest('#zoomClose')) closeZoom();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#zoom').classList.contains('hidden')) closeZoom(); });
 
 // ---------------------------------------------------------------- inicio
 if (token) start(); else $('#login').classList.remove('hidden');

@@ -64,15 +64,15 @@ function resultHtml(c) {
   return `<div class="res sell-res" data-id="${esc(c.scryfall_id)}">
     <span class="fx-card ${opts[0] === 'surge' ? 'surge' : ''}"><img src="${esc(c.image || '/logo.svg')}" alt="${esc(c.name)}" loading="lazy">${opts[0] === 'surge' ? '<span class="fx-sparkle"></span>' : ''}</span>
     <div class="n">${esc(c.name)}</div>
-    <div class="m">${setIcon(c.set, c.rarity)} ${esc(c.set_name)} · ${esc(c.set.toUpperCase())} #${esc(c.collector_number)}</div>
+    <div class="m">${setIcon(c.set, c.rarity)}<span>${esc(c.set_name)} · ${esc(c.set.toUpperCase())} #${esc(c.collector_number)}</span></div>
     <div class="f">
       <select class="input" data-f="finish" aria-label="Acabado">${opts.map((f) => `<option value="${f}">${FINISH[f]}</option>`).join('')}</select>
-      <select class="input" data-f="condition" aria-label="Estado">${Object.keys(COND).map((k) => `<option value="${k}" title="${COND[k]}">${k} · ${COND[k]}</option>`).join('')}</select>
+      <select class="input" data-f="condition" aria-label="Estado">${Object.keys(COND).map((k) => `<option value="${k}" title="${COND[k]}">${k}</option>`).join('')}</select>
     </div>
     <div class="offer-line" data-offer></div>
-    <div style="display:flex;gap:6px;align-items:center">
+    <div class="act-row">
       <div class="qty"><button type="button" data-q="-1" aria-label="Menos">−</button><input data-f="qty" type="number" value="1" min="1" max="99" aria-label="Cantidad"><button type="button" data-q="1" aria-label="Más">+</button></div>
-      <button class="btn primary sm" data-act="add" style="flex:1">+ Agregar a mi lista</button>
+      <button class="btn primary sm" data-act="add">+ Agregar</button>
     </div>
     ${!state.search.prints ? `<button class="btn ghost sm" data-act="prints" data-name="${esc(c.name)}">Ver otras ediciones</button>` : ''}
   </div>`;
@@ -92,7 +92,9 @@ function updateOffer(box) {
   const ok = q && !q.tooLow && q.cash > 0;
   $('[data-offer]', box).innerHTML = ok
     ? `<div><small>Dinero</small><b>${money(q.cash, state.currency)}</b></div><div class="cr"><small>Crédito</small><b>${money(q.credit, state.currency)}</b></div>`
-    : '<div class="no"><small>Esta carta no la estamos comprando</small></div>';
+    : q?.tooLow
+      ? '<div class="no"><small>Por ahora no compramos esta carta (valor muy bajo)</small></div>'
+      : '<div class="no"><small>Sin precio de referencia para esta versión. Probá otro acabado o consultanos.</small></div>';
   $('[data-act=add]', box).disabled = !ok;
 }
 

@@ -246,8 +246,16 @@ label.field > span { font-weight: 600; }
 .row-form > * { flex: 1 1 160px; }
 .row-form > .btn { flex: 0 0 auto; }
 .results { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-top: 16px; }
-.res { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; align-content: start; }
-.res img { border-radius: 4.75% / 3.5%; width: 100%; aspect-ratio: 488/680; object-fit: cover; background: var(--bg-2); }
+.res { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-content: start; min-width: 0; }
+.res > * { min-width: 0; }
+/* sólo la imagen de la carta (no los íconos de edición) */
+.res > img, .res > .fx-card img { border-radius: 4.75% / 3.5%; width: 100%; aspect-ratio: 488/680; object-fit: cover; background: var(--bg-2); }
+.res .set-ico { width: 15px; height: 15px; flex: 0 0 15px; }
+.res .act-row { display: flex; gap: 6px; align-items: center; }
+.res .act-row .btn { flex: 1; min-width: 0; padding-left: .5em; padding-right: .5em; }
+.res .qty button { width: 28px; height: 32px; }
+.res .qty input { width: 34px; height: 32px; }
+.res .f select { min-width: 0; text-overflow: ellipsis; }
 .res .n { font-weight: 700; font-size: .92rem; line-height: 1.2; }
 .res .m { font-size: .76rem; color: var(--muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .res .ckp { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: .78rem; }
@@ -470,3 +478,32 @@ table.t img.th { width: 34px; border-radius: 3px; }
 .photo-admin { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; padding: 9px 12px; border-radius: 8px; font-size: .88rem;
   background: rgba(240,182,74,.1); border: 1px solid rgba(240,182,74,.4); color: #f5d49a; }
 .photo-admin.ok { background: rgba(92,201,138,.1); border-color: rgba(92,201,138,.4); color: var(--ok); }
+
+/* tarjetas de resultados: ícono de edición junto al texto y selector de acabado más ancho */
+.res .m { flex-wrap: nowrap; align-items: flex-start; }
+.res .m .set-ico { margin-top: 1px; }
+.sell-res .f { grid-template-columns: 1.35fr 1fr; }
+
+/* vista previa de cartas en pedidos */
+.order-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin: 10px 0 4px; }
+.oc { display: grid; gap: 4px; align-content: start; font-size: .8rem; min-width: 0; }
+.oc-img { position: relative; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 4.75% / 3.5%; transition: transform .15s; }
+.oc-img:hover { transform: translateY(-2px) scale(1.02); }
+.oc-img:disabled { cursor: default; }
+.oc-img img { width: 100%; aspect-ratio: 488/680; object-fit: cover; display: block; background: var(--bg-2); }
+.oc-qty { position: absolute; top: 6px; right: 6px; background: var(--brass); color: var(--brass-ink); font-weight: 800; font-size: .78rem; padding: 1px 7px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.oc-noimg { display: grid; place-items: center; aspect-ratio: 488/680; background: var(--bg-2); border: 1px dashed var(--line-2); border-radius: 8px; color: var(--faint); font-size: .75rem; }
+.oc-n { font-weight: 700; line-height: 1.2; }
+.oc-m, .oc-p { color: var(--muted); }
+.oc-p b { color: var(--brass-2); }
+img.zoomable { cursor: zoom-in; }
+.zoom { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.82); display: grid; place-items: center; gap: 12px; padding: 20px; animation: fade .15s; }
+.zoom.hidden { display: none; }
+.zoom figure { margin: 0; display: grid; gap: 10px; justify-items: center; }
+.zoom img { max-height: 78vh; max-width: min(488px, 90vw); border-radius: 4.75% / 3.5%; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+.zoom figcaption { color: var(--text); font-size: .95rem; text-align: center; }
+.mini-cards { display: grid; gap: 6px; margin: 8px 0; }
+.mc { display: flex; gap: 10px; align-items: center; font-size: .88rem; }
+.mc img { width: 42px; border-radius: 3px; display: block; }
+.mc .oc-noimg { width: 42px; font-size: .55rem; }
+.mc small { display: block; }

@@ -181,7 +181,10 @@ async function openMyOrders() {
     ${list.length ? list.map((o) => `<div class="order">
       <header><h3>Pedido #${o.number}</h3><span class="st-${o.status}">● ${ST[o.status] || o.status}</span></header>
       <div class="muted">${new Date(o.created_at).toLocaleString('es-AR')} · <b class="price" style="font-size:1rem">${money(o.total, o.currency)}</b>${o.creditUsed ? ` · crédito −${money(o.creditUsed, o.currency)} · a pagar ${money(o.toPay, o.currency)}` : ''}</div>
-      <ul>${o.items.map((i) => `<li>${i.qty}× ${esc(i.name)} <span class="muted">${esc(i.set.toUpperCase())} #${esc(i.collector_number)} · ${esc(i.condition)}${i.finish && i.finish !== 'nonfoil' ? ' · ' + FINISH[i.finish].toUpperCase() : ''}</span></li>`).join('')}</ul>
+      <div class="mini-cards">${o.items.map((i) => `<div class="mc" title="${esc(`${i.qty}× ${i.name} · ${i.set.toUpperCase()} #${i.collector_number} · ${i.condition}`)}">
+        ${i.image ? `<a href="${esc(i.image_large || i.image)}" target="_blank" rel="noopener"><img src="${esc(i.image)}" alt="${esc(i.name)}" loading="lazy"></a>` : '<span class="oc-noimg">Sin imagen</span>'}
+        <span>${i.qty}× ${esc(i.name)}<small class="muted">${esc(i.set.toUpperCase())} · ${esc(i.condition)}${i.finish && i.finish !== 'nonfoil' ? ' · ' + FINISH[i.finish].toUpperCase() : ''}</small></span>
+      </div>`).join('')}</div>
     </div>`).join('') : '<div class="empty">Todavía no hiciste pedidos.</div>'}
   </div>`);
 }

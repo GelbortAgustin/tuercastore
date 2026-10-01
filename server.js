@@ -12,7 +12,7 @@ import { createVerifier } from './verificacion.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // En Railway el volumen persistente se monta en RAILWAY_VOLUME_MOUNT_PATH; en tu PC se usa ./data
 const DATA = process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
-const IS_PROD = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RENDER || process.env.NODE_ENV === 'production');
+const IS_PROD = !!(process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production');
 // Si ADMIN_PASSWORD está definida en el hosting, manda sobre la guardada en config.json
 const ENV_PASSWORD = process.env.ADMIN_PASSWORD || '';
 if (!existsSync(DATA)) mkdirSync(DATA, { recursive: true });
@@ -557,6 +557,15 @@ app.get('/api/productos/:id', (req, res) => {
   res.json({ ...publicItem(item), others });
 });
 
+// imágenes para la vista previa de pedidos (los pedidos viejos no las guardaban: se buscan en el inventario)
+function withItemImages(items = []) {
+  return items.map((i) => {
+    if (i.image) return i;
+    const inv = inventory.find((x) => x.id === i.id);
+    return inv ? { ...i, image: inv.image_small || inv.image || null, image_large: inv.image_large || inv.image || null } : i;
+  });
+}
+
 // ---- cuentas de clientes
 const COOKIE = 'tuerca_sid';
 // sesión válida (verificada o no)
@@ -711,7 +720,7 @@ app.get('/api/cuenta/pedidos', (req, res) => {
   const u = currentUser(req);
   if (!u) return res.status(401).json({ error: 'No ingresaste' });
   res.json(orders.filter((o) => o.userId === u.id).map((o) => ({
-    number: o.number, status: o.status, created_at: o.created_at, total: o.total, currency: o.currency, items: o.items,
+    number: o.number, status: o.status, created_at: o.created_at, total: o.total, currency: o.currency, items: withItemImages(o.items),
     creditUsed: o.creditUsed || 0, toPay: o.toPay ?? o.total,
   })));
 });
@@ -910,6 +919,7 @@ app.post('/api/pedidos', asyncH(async (req, res) => {
       id: l.item.id, name: l.item.name, set: l.item.set, set_name: l.item.set_name,
       collector_number: l.item.collector_number, finish: l.item.finish, foil: l.item.finish !== 'nonfoil', condition: l.item.condition,
       lang: l.item.lang, qty: l.qty, price: l.price,
+      scryfall_id: l.item.scryfall_id, image: l.item.image_small || l.item.image || null, image_large: l.item.image_large || l.item.image || null,
     })),
   };
   order.total = order.items.reduce((s, i) => s + i.price * i.qty, 0);
@@ -1112,29 +1122,6 @@ app.post('/api/admin/inventario', asyncH(async (req, res) => {
   res.json({ item: { ...item, ...priceOf(item) }, merged });
 }));
 
-// agregar varias cartas juntas (lista armada en "Agregar cartas")
-app.post('/api/admin/inventario/lote', asyncH(async (req, res) => {
-  const items = Array.isArray(req.body?.items) ? req.body.items.filter((x) => x?.scryfall_id) : [];
-  if (!items.length) return res.status(400).json({ error: 'La lista está vacía' });
-  if (items.length > 500) return res.status(400).json({ error: 'Máximo 500 cartas por vez' });
-  const cards = new Map();
-  const ids = [...new Set(items.map((x) => String(x.scryfall_id)))];
-  for (let i = 0; i < ids.length; i += 75) {
-    const json = await scryfall('/cards/collection', { method: 'POST', body: JSON.stringify({ identifiers: ids.slice(i, i + 75).map((id) => ({ id })) }) });
-    for (const c of json?.data || []) cards.set(c.id, mapCard(c));
-  }
-  let added = 0, merged = 0; const missing = [];
-  for (const x of items) {
-    const card = cards.get(String(x.scryfall_id));
-    if (!card) { missing.push(x.scryfall_id); continue; }
-    const r = addToInventory(card, { finish: normalizeFinish(x.finish, x.foil), condition: x.condition, lang: x.lang, qty: x.qty });
-    fixScryfallUsd(r.item);
-    r.merged ? merged++ : added++;
-  }
-  await saveInventory();
-  res.json({ added, merged, missing });
-}));
-
 // importar lista de texto (formato Arena/Moxfield/MTGO)
 app.post('/api/admin/importar', asyncH(async (req, res) => {
   const { text, condition = 'NM', lang = 'en', finish: defFinish, foil = false, preview = false } = req.body || {};
@@ -1215,7 +1202,7 @@ app.post('/api/admin/legalidades/actualizar', asyncH(async (req, res) => {
   res.json({ updatedAt: legal.updatedAt, error: legal.error });
 }));
 
-app.get('/api/admin/pedidos', (req, res) => res.json(orders.map((o) => ({ ...o, customer: decryptCustomer(o.customer) }))));
+app.get('/api/admin/pedidos', (req, res) => res.json(orders.map((o) => ({ ...o, items: withItemImages(o.items), customer: decryptCustomer(o.customer) }))));
 
 // ---- clientes (el panel ve los datos descifrados; en disco siguen cifrados)
 app.get('/api/admin/clientes', (req, res) => {
