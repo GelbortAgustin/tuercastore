@@ -26,8 +26,7 @@
   "buyRoundTo": 10,
   "buyRequirePhotos": true,
   "buyPhotosEmail": "",
-  "adminPassword": "GlobalMimilona01!",
-  "legalitiesUpdatedAt": "2026-09-29T02:46:56.640Z",
+  "legalitiesUpdatedAt": "2026-10-01T01:20:30.895Z",
   "verify": {
     "smtp": {
       "host": "smtp.gmail.com",
@@ -36,5 +35,7 @@
       "port": 465,
       "pass": "v1:L7rgZjJ9KkSkJINX:BRhUAK4xdJE2eL63NSkkPA==:g6qtzkYI8+of0QjijDn2RA=="
     }
-  }
+  },
+  "adminPasswordHash": "scrypt$16384$8$1$dN3U2M1+dHk3rpHFtggvuw==$uORhGXTgm2ywwFaFD2kPYkX740umCUEoDcGZeupMTKPetUfolFI0Hrgv99nuSEDCplh7Dl90T4kZ1v/4mfh8qg==",
+  "adminPasswordDefault": false
 }

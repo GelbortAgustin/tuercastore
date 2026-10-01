@@ -1,0 +1,103 @@
+TUERCA STORE — KIT DE INSTAGRAM
+================================
+
+QUÉ HAY EN CADA CARPETA
+-----------------------
+1 - Logo
+  - tuerca-icono.png ............ la tuerca sola, fondo transparente (1024x1024)
+  - tuerca-icono.svg ............ misma tuerca en vector (escala sin perder calidad, sirve para imprimir)
+  - tuerca-logo-horizontal-fondos-oscuros.png ... logo completo, texto claro, fondo transparente
+  - tuerca-logo-horizontal-fondos-claros.png .... logo completo, texto oscuro, fondo transparente
+  - tuerca-logo-con-fondo.png ... logo completo sobre fondo oscuro (2000x2000)
+
+2 - Perfil
+  - foto-de-perfil.png .......... subila como foto de perfil (Instagram la recorta en círculo; ya está centrada)
+
+3 - Posts (1080x1350, formato vertical 4:5, el que mejor se ve en el feed)
+  - 01-bienvenida.png ........... primer post
+  - 02-como-comprar.png ......... segundo post
+  - 03-compramos-tus-cartas.png . tercer post
+  - 04-plantilla-carta-destacada.png ... plantilla: poné encima la imagen de una carta (y el precio abajo)
+  - 05-plantilla-fondo-libre.png ....... plantilla vacía para ofertas, avisos, etc.
+
+4 - Historias (1080x1920)
+  - historia-nuevo-ingreso.png .. plantilla: poné la carta en el recuadro
+  - historia-compramos.png ...... lista para subir
+  - historia-fondo-libre.png .... fondo vacío para escribir encima con el texto de Instagram
+
+5 - Destacadas (portadas para las historias destacadas)
+  Comprar / Vender / Novedades / Cartas / Contacto / Info
+  Al crear una destacada: "Editar portada" -> elegí la imagen de la galería.
+
+CÓMO USAR LAS PLANTILLAS
+------------------------
+Opción fácil desde el celular: subí la plantilla como historia y pegá encima la imagen de la carta
+(Instagram deja pegar imágenes con el sticker de "Foto"). Para posts, usá Canva (gratis): subís la
+plantilla como fondo, arrastrás la imagen de la carta al recuadro y escribís el nombre y precio abajo.
+Tipografías de la marca (gratis en Google Fonts y en Canva): Chakra Petch para títulos, Inter para texto.
+Colores: dorado #E9A53F · dorado claro #F6C66B · fondo #121316 · texto #ECEBE7
+
+NOMBRE DE USUARIO (probá en este orden, no pude verificar cuáles están libres)
+-----------------------------------------------------------------------------
+@tuercastore   ·   @tuerca.store   ·   @tuercastore.ar   ·   @tuerca_store
+
+NOMBRE (el que aparece en negrita en el perfil — conviene poner palabras que la gente busca)
+-------------------------------------------------------------------------------------------
+Tuerca Store | Cartas de Magic
+
+BIO (máx. 150 caracteres)
+-------------------------
+Singles de Magic: The Gathering 🃏
+Comprá, vendé o canjeá tus cartas
+Precios en pesos 🇦🇷
+👇 Tienda online
+
+Enlace: el link de tu página (Railway). Si querés sumar WhatsApp, Instagram deja agregar varios enlaces
+o conectar WhatsApp como botón de contacto (cuenta profesional).
+
+CONFIGURACIÓN RECOMENDADA
+-------------------------
+- Pasá la cuenta a "Profesional" -> categoría "Tienda de juegos" o "Tienda de hobbies".
+- Botón de contacto: WhatsApp (+54 11 2386-9780, el mismo que usa la página).
+- Cuando tengas el usuario, cargalo en el panel admin de la página (campo Instagram en la configuración).
+
+TEXTOS PARA LOS PRIMEROS POSTS
+------------------------------
+POST 1 — Bienvenida
+¡Abrió Tuerca Store! ⚙️
+Singles de Magic: The Gathering con precios en pesos, todo en una sola página.
+Buscá la carta que te falta para el mazo, sumala al carrito y coordinamos por WhatsApp.
+Y si tenés cartas juntando polvo, también te las compramos.
+🔗 Tienda en el link de la bio.
+
+POST 2 — Cómo comprar
+Comprar en Tuerca Store es así de simple 👇
+1️⃣ Entrá a la tienda (link en bio)
+2️⃣ Buscá tu carta por nombre, tipo o edición
+3️⃣ Sumala al carrito eligiendo estado y cantidad
+4️⃣ Confirmá por WhatsApp y coordinamos pago y entrega
+¿Dudas? Escribinos por DM.
+
+POST 3 — Compramos tus cartas
+¿Tenés cartas guardadas que no usás? 📦
+Cargá tu lista en la sección "Vender cartas" de la página y te hacemos una oferta.
+Elegís cómo cobrar: en efectivo o en crédito de tienda (con crédito te damos más valor).
+🔗 Link en la bio.
+
+PLANTILLA — Carta destacada / nuevo ingreso
+🔥 Nuevo ingreso: [NOMBRE DE LA CARTA]
+Edición: [EDICIÓN] · Estado: [NM/LP/MP]
+Precio: $[PRECIO]
+Pedila desde la tienda (link en bio) o por DM.
+
+HASHTAGS (usá 5 a 10 por post, variando)
+---------------------------------------
+#MagicTheGathering #MTG #MTGArgentina #MagicArgentina #MTGCommunity #Commander #EDH
+#MTGSingles #MTGFinance #CartasMagic #TCG #TCGArgentina #MTGCollection #Pauper #Modern
+
+PLAN PARA LA PRIMERA SEMANA
+---------------------------
+Día 1: foto de perfil + bio + destacadas + posts 1, 2 y 3 (subilos en orden 3, 2, 1 así "Bienvenida" queda primero)
+Día 2 en adelante: 1 historia por día con cartas que entran (plantilla "nuevo ingreso")
+2-3 posts por semana: cartas destacadas, ofertas, staples de Commander
+Seguí tiendas y jugadores de tu zona y compartí las historias de torneos locales.
