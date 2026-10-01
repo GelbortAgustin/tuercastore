@@ -1239,9 +1239,33 @@ app.patch('/api/admin/inventario/:id', asyncH(async (req, res) => {
   if ('lang' in b) item.lang = String(b.lang).slice(0, 5);
   if ('finish' in b || 'foil' in b) { item.finish = resolveFinish(item, normalizeFinish(b.finish, b.foil)); fixScryfallUsd(item); }
   if ('priceOverride' in b) item.priceOverride = b.priceOverride === '' || b.priceOverride == null ? null : Number(b.priceOverride);
+  // cambiar la edición (otra impresión de Scryfall) manteniendo cantidad, estado, idioma y precio manual
+  let merged = false, removedId = null, target = item;
+  if (b.scryfall_id && b.scryfall_id !== item.scryfall_id) {
+    const c = await scryfall(`/cards/${encodeURIComponent(b.scryfall_id)}`);
+    if (!c) return res.status(404).json({ error: 'Edición no encontrada en Scryfall' });
+    const card = mapCard(c);
+    const opts = withCk(card).finishOptions;
+    let finish = resolveFinish(card, item.finish);
+    if (opts.length && !opts.includes(finish)) finish = finish !== 'nonfoil' && opts.includes('foil') ? 'foil' : opts[0];
+    const other = inventory.find((x) => x !== item && sameStock(x, { scryfall_id: card.scryfall_id, finish, condition: item.condition, lang: item.lang }));
+    if (other) {
+      // ya había stock de esa edición con el mismo acabado/estado/idioma: se juntan
+      other.qty += item.qty;
+      if (other.priceOverride == null && item.priceOverride != null) other.priceOverride = item.priceOverride;
+      inventory = inventory.filter((x) => x !== item);
+      for (const o of orders) for (const l of o.items || []) if (l.id === item.id) l.id = other.id; // para que cancelar un pedido viejo devuelva el stock
+      merged = true; removedId = item.id; target = other;
+      await saveOrders();
+    } else {
+      Object.assign(item, pickCardFields(card));
+      item.finish = finish; fixScryfallUsd(item);
+    }
+  }
   await saveInventory();
-  const p = priceOf(item);
-  res.json({ ...item, price: p.price, usd: p.usd, source: p.source });
+  const p = priceOf(target);
+  const e = ckFor(target.scryfall_id, target.finish, target.surgePrint);
+  res.json({ ...target, price: p.price, usd: p.usd, source: p.source, ckUrl: e?.url || null, ckQty: e?.qty ?? null, ...(merged ? { merged, removedId } : {}) });
 }));
 
 app.delete('/api/admin/inventario/:id', asyncH(async (req, res) => {

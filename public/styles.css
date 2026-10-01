@@ -533,3 +533,23 @@ img.zoomable { cursor: zoom-in; }
 .chat-form { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
 .chat-form .input { flex: 1; min-width: 0; }
 .order-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ---- inventario: cambiar edición */
+.link-btn { display: block; text-align: left; margin-top: 3px; padding: 0; background: none; border: 0; color: var(--brass); font-size: .76rem; cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
+.dlg-wrap { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.7); display: grid; place-items: center; padding: 16px; animation: fade .15s; }
+.dlg-wrap.hidden { display: none; }
+.dlg { width: min(760px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
+.dlg header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.dlg h3 { margin: 0 0 2px; font-family: var(--display); font-size: 1.25rem; }
+.dlg header .muted { font-size: .82rem; }
+.ed-list { overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; padding-right: 2px; }
+.ed { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; align-items: center; text-align: left; padding: 8px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; color: inherit; cursor: pointer; font: inherit; }
+.ed:hover:not(:disabled) { border-color: var(--brass); background: var(--panel-2); }
+.ed:disabled { cursor: default; }
+.ed.cur { border-color: var(--brass); opacity: .75; }
+.ed img { width: 64px; border-radius: 4px; display: block; }
+.ed-t { display: grid; gap: 2px; font-size: .78rem; min-width: 0; }
+.ed-t b { font-size: .88rem; }
+.ed-t .set-ico { width: 15px; height: 15px; vertical-align: -2px; }
+.ed-warn { color: var(--warn); }

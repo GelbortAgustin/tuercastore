@@ -224,7 +224,8 @@ function renderInventory() {
   if (!list.length) { $('#invBody').innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;padding:30px">No hay cartas para mostrar.</td></tr>'; return; }
   $('#invBody').innerHTML = list.map((i) => `<tr data-id="${i.id}">
     <td><img class="th" src="${esc(i.image_small || i.image)}" alt="" loading="lazy"></td>
-    <td><b>${esc(i.name)}</b><br><span class="muted">${setIcon(i.set, i.rarity)} ${esc(i.set.toUpperCase())} #${esc(i.collector_number)}</span>${bannedIn(i)}</td>
+    <td><b>${esc(i.name)}</b><br><span class="muted">${setIcon(i.set, i.rarity)} ${esc(i.set.toUpperCase())} #${esc(i.collector_number)}</span>
+      <button type="button" class="link-btn" data-edition title="Cambiar la edición de esta carta">✎ Cambiar edición</button>${bannedIn(i)}</td>
     <td><select class="input" data-k="finish">${Object.entries(FINISH).map(([k, v]) => `<option value="${k}" ${k === finishOf(i) ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
     <td><select class="input" data-k="condition">${Object.keys(COND).map((c) => `<option ${c === i.condition ? 'selected' : ''}>${c}</option>`).join('')}</select></td>
     <td><select class="input" data-k="lang">${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${k === i.lang ? 'selected' : ''}>${k.toUpperCase()}</option>`).join('')}</select></td>
@@ -256,7 +257,50 @@ $('#invBody').addEventListener('change', async (e) => {
     toast('Guardado');
   } catch (err) { toast(err.message, true); }
 });
+// ---- cambiar la edición de una carta en stock
+let editionFor = null;
+async function openEditions(item) {
+  editionFor = item;
+  $('#edTitle').textContent = item.name;
+  $('#edSub').textContent = `Ahora: ${item.set_name} (${item.set.toUpperCase()} #${item.collector_number}) · ${FINISH[finishOf(item)]} · ${item.condition} · ${item.qty} en stock`;
+  $('#edList').innerHTML = '<div class="spinner"></div>';
+  $('#editions').classList.remove('hidden'); $('#edClose').focus();
+  try {
+    const { cards } = await api(`/scryfall/ediciones?name=${encodeURIComponent(item.name)}`);
+    if (editionFor !== item) return;
+    if (!cards.length) { $('#edList').innerHTML = '<div class="empty">No encontré otras ediciones de esta carta.</div>'; return; }
+    const f = finishOf(item);
+    $('#edList').innerHTML = cards.map((c) => {
+      const cur = c.scryfall_id === item.scryfall_id;
+      const prices = c.finishOptions.map((k) => `${FINISH[k]}: ${c.ck?.[k]?.retail != null ? usd(c.ck[k].retail) : 'sin precio CK'}`).join(' · ');
+      const will = c.finishOptions.includes(f) ? f : (f !== 'nonfoil' && c.finishOptions.includes('foil') ? 'foil' : c.finishOptions[0]);
+      return `<button type="button" class="ed ${cur ? 'cur' : ''}" data-sid="${esc(c.scryfall_id)}" ${cur ? 'disabled' : ''}>
+        <img src="${esc(c.image_small || c.image || '')}" alt="" loading="lazy">
+        <span class="ed-t"><b>${setIcon(c.set, c.rarity)} ${esc(c.set_name)}</b>
+          <span class="muted">${esc(c.set.toUpperCase())} #${esc(c.collector_number)} · ${esc((c.released_at || '').slice(0, 4))}${c.lang && c.lang !== 'en' ? ' · ' + esc(c.lang.toUpperCase()) : ''}</span>
+          <span class="muted">${esc(prices)}</span>
+          ${cur ? '<span class="badge">EDICIÓN ACTUAL</span>' : will && will !== f ? `<span class="ed-warn">No existe en ${esc(FINISH[f])}: quedará como ${esc(FINISH[will])}</span>` : ''}</span>
+      </button>`;
+    }).join('');
+  } catch (err) { $('#edList').innerHTML = `<div class="empty">${esc(err.message)}</div>`; }
+}
+function closeEditions() { $('#editions').classList.add('hidden'); editionFor = null; }
+$('#editions').addEventListener('click', async (e) => {
+  if (e.target.id === 'editions' || e.target.closest('#edClose')) return closeEditions();
+  const b = e.target.closest('[data-sid]'); if (!b || !editionFor) return;
+  const item = editionFor;
+  $$('#edList .ed').forEach((x) => { x.disabled = true; });
+  try {
+    const upd = await api(`/inventario/${item.id}`, { method: 'PATCH', body: { scryfall_id: b.dataset.sid } });
+    closeEditions();
+    toast(upd.merged ? `Edición cambiada a ${upd.set.toUpperCase()} #${upd.collector_number}: se sumó al stock que ya tenías de esa edición` : `Edición cambiada a ${upd.set.toUpperCase()} #${upd.collector_number}`);
+    await loadInventory(); loadStatus();
+  } catch (err) { toast(err.message, true); $$('#edList .ed:not(.cur)').forEach((x) => { x.disabled = false; }); }
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#editions').classList.contains('hidden')) closeEditions(); });
+
 $('#invBody').addEventListener('click', async (e) => {
+  if (e.target.closest('[data-edition]')) return openEditions(inv.find((x) => x.id === e.target.closest('tr').dataset.id));
   if (!e.target.closest('[data-del]')) return;
   const tr = e.target.closest('tr'); const item = inv.find((x) => x.id === tr.dataset.id);
   const btn = e.target.closest('[data-del]');
