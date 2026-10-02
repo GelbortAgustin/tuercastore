@@ -317,24 +317,44 @@ $('#exportCsv').addEventListener('click', async () => {
 });
 
 // ---------------------------------------------------------------- pedidos
-async function loadOrders() {
-  $('#ordersList').innerHTML = '<div class="spinner"></div>';
-  try {
-    const orders = await api('/pedidos');
-    if (!orders.length) { $('#ordersList').innerHTML = '<div class="empty">Todavía no hay pedidos.</div>'; return; }
-    $('#ordersList').innerHTML = orders.map((o) => `<div class="order" data-id="${o.id}">
-      <header>
-        <div><h3>Pedido #${o.number} <span class="st-${o.status}" style="font-size:.85rem">● ${ORDER_ST[o.status] || o.status}</span></h3>
-          <span class="muted">${new Date(o.created_at).toLocaleString('es-AR')} · ${esc(o.customer.name)}${o.customer.phone ? ` · ${esc(o.customer.phone)}` : ''}</span></div>
-        <div class="order-actions">
-          <b class="price">${money(o.total, o.currency)}</b>
-          ${['pendiente', 'pagado'].includes(o.status) ? '<button type="button" class="btn primary sm" data-ready title="Avisa al cliente que puede pasar a retirar">✔ Marcar preparado</button>' : ''}
-          <select class="input" data-status style="width:auto" aria-label="Estado del pedido">${['pendiente', 'pagado', 'preparado', 'entregado', 'cancelado'].map((s) => `<option ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
-          ${o.customer.phone ? `<a class="btn wa sm" target="_blank" rel="noopener" href="https://wa.me/${esc(waNumber(o.customer.phone))}">WhatsApp</a>` : ''}
-        </div>
-      </header>
+// tablero: una columna por etapa; cada pedido se puede minimizar o agrandar
+const ORDER_COLS = [
+  { k: 'pendiente', t: 'Nuevo pedido', st: ['pendiente'] },
+  { k: 'preparando', t: 'En preparación', st: ['preparando'] },
+  { k: 'preparado', t: 'Preparado', st: ['preparado'] },
+  { k: 'pagado', t: 'Pagado', st: ['pagado'] },
+  { k: 'entregado', t: 'Entregado / Cancelado', st: ['entregado', 'cancelado'] },
+];
+const ADMIN_ST = { pendiente: 'Nuevo pedido', preparando: 'En preparación', preparado: 'Preparado', pagado: 'Pagado', entregado: 'Entregado', cancelado: 'Cancelado' };
+const NEXT_ST = { pendiente: ['preparando', 'Empezar a preparar'], preparando: ['preparado', '✔ Marcar preparado'], preparado: ['pagado', 'Marcar pagado'], pagado: ['entregado', 'Marcar entregado'] };
+const openOrders = new Set(store.get('tuerca-orders-open', [])); // pedidos agrandados (se recuerda en este navegador)
+const saveOpenOrders = () => store.set('tuerca-orders-open', [...openOrders]);
+let popId = null; // pedido abierto en ventana emergente
+function orderCard(o) {
+  const n = o.items.reduce((s, i) => s + i.qty, 0), open = openOrders.has(o.id), next = NEXT_ST[o.status];
+  const cap = (i) => `${i.qty}× ${i.name} · ${i.set.toUpperCase()} #${i.collector_number} · ${i.condition}${finishOf(i) !== 'nonfoil' ? ' · ' + FINISH[finishOf(i)] : ''}`;
+  return `<article class="order ${open ? '' : 'min'} ${o.status === 'cancelado' ? 'cancelled' : ''} ${popId === o.id ? 'pop' : ''}" data-id="${o.id}" data-st="${o.status}">
+    <header draggable="true">
+      <div class="ord-toggle" title="Clic para agrandar o minimizar · arrastrá para cambiar de columna">
+        <button type="button" class="chev-btn" data-toggle aria-expanded="${open}" aria-label="${open ? 'Minimizar' : 'Agrandar'} el pedido #${o.number}"><span class="chev">▸</span></button>
+        <span class="ord-h"><button type="button" class="ord-id" data-pop title="Abrir el pedido en una ventana">Pedido #${o.number}</button>
+          ${o.status === 'cancelado' ? '<span class="tag-cancel">CANCELADO</span>' : o.status === 'entregado' ? '<span class="tag-done">ENTREGADO</span>' : ''}
+          <span class="pop-st st-${o.status}">● ${ADMIN_ST[o.status]}</span>
+          <span class="nbadge ${o.unread ? '' : 'hidden'}" data-unread-h title="Mensajes sin leer">${o.unread || ''}</span></span>
+        <b class="price">${money(o.total, o.currency)}</b>
+        <button type="button" class="btn ghost sm pop-x" data-unpop aria-label="Cerrar la ventana">✕</button></div>
+      <div class="ord-sub muted">${esc(o.customer.name)} · ${new Date(o.created_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${n} carta${n === 1 ? '' : 's'}</div>
+    </header>
+    <div class="ord-strip" aria-hidden="true">${o.items.slice(0, 7).map((i) => i.image ? `<img src="${esc(i.image)}" alt="" loading="lazy">` : '').join('')}${o.items.length > 7 ? `<span>+${o.items.length - 7}</span>` : ''}</div>
+    <div class="ord-body">
+      <div class="order-actions">
+        ${next ? `<button type="button" class="btn primary sm" data-next="${next[0]}">${next[1]}</button>` : ''}
+        <select class="input" data-status aria-label="Estado del pedido">${Object.keys(ADMIN_ST).map((s) => `<option value="${s}" ${s === o.status ? 'selected' : ''}>${ADMIN_ST[s]}</option>`).join('')}</select>
+        ${o.customer.phone ? `<a class="btn wa sm" target="_blank" rel="noopener" href="https://wa.me/${esc(waNumber(o.customer.phone))}">WhatsApp</a>` : ''}
+      </div>
+      <div class="muted ord-meta">${new Date(o.created_at).toLocaleString('es-AR')}${o.customer.phone ? ` · ${esc(o.customer.phone)}` : ''}</div>
       <div class="order-cards">${o.items.map((i) => `<div class="oc">
-        <button type="button" class="oc-img" data-zoom="${esc(i.image_large || i.image || '')}" data-caption="${esc(`${i.qty}× ${i.name} · ${i.set.toUpperCase()} #${i.collector_number} · ${i.condition}${finishOf(i) !== 'nonfoil' ? ' · ' + FINISH[finishOf(i)] : ''}`)}" aria-label="Ver ${esc(i.name)}" ${i.image ? '' : 'disabled'}>
+        <button type="button" class="oc-img" data-zoom="${esc(i.image_large || i.image || '')}" data-caption="${esc(cap(i))}" aria-label="Ver ${esc(i.name)}" ${i.image ? '' : 'disabled'}>
           ${i.image ? `<span class="fx-card ${finishOf(i) === 'surge' ? 'surge' : finishOf(i) === 'foil' ? 'foil' : ''}"><img src="${esc(i.image)}" alt="" loading="lazy">${finishOf(i) === 'surge' ? '<span class="fx-sparkle"></span>' : ''}</span>` : '<span class="oc-noimg">Sin imagen</span>'}
           ${i.qty > 1 ? `<span class="oc-qty">×${i.qty}</span>` : ''}
         </button>
@@ -344,13 +364,37 @@ async function loadOrders() {
       </div>`).join('')}</div>
       ${o.creditUsed ? `<div class="muted" style="margin-top:6px">Crédito de tienda usado: −${money(o.creditUsed, o.currency)} · <b>A pagar: ${money(o.toPay, o.currency)}</b></div>` : ''}
       ${o.customer.note ? `<div class="oracle">${esc(o.customer.note)}</div>` : ''}
+      ${o.status === 'cancelado' ? '<div class="cancel-banner">✕ Pedido cancelado: el stock volvió al inventario.</div>' : ''}
       ${o.status === 'preparado' ? `<div class="ready-banner">✔ <span>Preparado${o.readyAt ? ' el ' + new Date(o.readyAt).toLocaleString('es-AR') : ''}.<small>${o.userId ? (o.readySeen ? 'El cliente ya vio el aviso en su perfil.' : 'El cliente todavía no vio el aviso en su perfil.') : 'Pidió sin cuenta: avisale por WhatsApp.'}</small></span></div>` : ''}
       ${o.userId ? `<details class="chat" ${openChats.has(o.id) ? 'open' : ''}>
         <summary>💬 Chat con el cliente <span class="nbadge ${o.unread ? '' : 'hidden'}" data-unread>${o.unread || ''}</span><span class="muted" data-count>${o.messages.length ? `${o.messages.length} mensaje${o.messages.length > 1 ? 's' : ''}` : ''}</span></summary>
         <div class="chat-log" data-log></div>
-        <form class="chat-form" data-send><input class="input" name="text" maxlength="1000" placeholder="Escribí un mensaje para el cliente…" autocomplete="off" required aria-label="Mensaje"><button class="btn primary sm">Enviar</button></form>
+        <form class="chat-form" data-send><input class="input" name="text" maxlength="1000" placeholder="Mensaje para el cliente…" autocomplete="off" required aria-label="Mensaje"><button class="btn primary sm">Enviar</button></form>
       </details>` : '<p class="hint" style="margin:8px 0 0">Pedido hecho sin cuenta: no tiene chat ni avisos en el perfil. Coordiná por WhatsApp.</p>'}
-    </div>`).join('');
+    </div>
+  </article>`;
+}
+async function loadOrders() {
+  if (!$('#ordersList .board')) $('#ordersList').innerHTML = '<div class="spinner"></div>';
+  try {
+    const orders = await api('/pedidos');
+    if (!orders.length) { $('#ordersList').innerHTML = '<div class="empty">Todavía no hay pedidos.</div>'; return; }
+    const scroll = $('#ordersList .board')?.scrollLeft || 0;
+    $('#ordersList').innerHTML = `<div class="board-bar">
+        <span class="muted">${orders.length} pedido${orders.length === 1 ? '' : 's'} · tocá un pedido para agrandarlo o minimizarlo</span>
+        <span><button type="button" class="btn sm" data-all="open">Agrandar todos</button> <button type="button" class="btn sm" data-all="min">Minimizar todos</button></span>
+      </div>
+      <div class="pop-backdrop" data-unpop></div>
+      <div class="board">${ORDER_COLS.map((c) => {
+        const list = orders.filter((o) => c.st.includes(o.status));
+        return `<section class="col col-${c.k}" data-col="${c.k}" aria-label="${c.t}">
+          <h3>${c.t} <span class="col-n">${list.length}</span></h3>
+          <div class="col-list">${list.map(orderCard).join('') || '<div class="col-empty">Sin pedidos</div>'}</div>
+        </section>`;
+      }).join('')}</div>`;
+    $('#ordersList .board').scrollLeft = scroll;
+    if (popId && !$('#ordersList .order.pop')) popId = null;
+    $('#ordersList').classList.toggle('has-pop', !!popId);
     paintChats(orders);
   } catch (err) { toast(err.message, true); }
 }
@@ -362,10 +406,11 @@ function paintChats(orders) {
   for (const o of orders) {
     const box = $(`.order[data-id="${o.id}"] .chat`); if (!box) continue;
     setChatLog($('[data-log]', box), o.messages, 'tienda');
-    const n = box.open ? 0 : o.unread;
-    $('[data-unread]', box).textContent = n || ''; $('[data-unread]', box).classList.toggle('hidden', !n);
+    const card = box.closest('.order'), reading = box.open && (!card.classList.contains('min') || card.classList.contains('pop'));
+    const n = reading ? 0 : o.unread;
+    for (const b of [$('[data-unread]', box), $('[data-unread-h]', card)]) { b.textContent = n || ''; b.classList.toggle('hidden', !n); }
     $('[data-count]', box).textContent = o.messages.length ? `${o.messages.length} mensaje${o.messages.length > 1 ? 's' : ''}` : '';
-    if (box.open && o.unread) api(`/pedidos/${o.id}/visto`, { method: 'POST' }).catch(() => {});
+    if (reading && o.unread) api(`/pedidos/${o.id}/visto`, { method: 'POST' }).catch(() => {});
   }
 }
 async function refreshChats() {
@@ -392,7 +437,52 @@ $('#ordersList').addEventListener('change', (e) => {
   const sel = e.target.closest('[data-status]'); if (sel) setOrderStatus(sel.closest('.order'), sel.value);
 });
 $('#ordersList').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-ready]'); if (b) { b.disabled = true; setOrderStatus(b.closest('.order'), 'preparado'); }
+  const b = e.target.closest('[data-next]'); if (b) { b.disabled = true; return setOrderStatus(b.closest('.order'), b.dataset.next); }
+  if (e.target.closest('[data-unpop]')) return setPop(null);
+  const p = e.target.closest('[data-pop]'); if (p) return setPop(p.closest('.order').dataset.id);
+  const top = e.target.closest('.ord-toggle');
+  if (top && !top.closest('.order').classList.contains('pop')) {
+    const t = $('[data-toggle]', top);
+    const card = t.closest('.order'), open = card.classList.toggle('min') === false;
+    t.setAttribute('aria-expanded', open); t.setAttribute('aria-label', `${open ? 'Minimizar' : 'Agrandar'} el pedido`);
+    open ? openOrders.add(card.dataset.id) : openOrders.delete(card.dataset.id); saveOpenOrders();
+    if (open) { const log = $('[data-log]', card); if (log) log.scrollTop = log.scrollHeight; refreshChats(); }
+    return;
+  }
+  const all = e.target.closest('[data-all]');
+  if (all) {
+    const open = all.dataset.all === 'open';
+    $$('#ordersList .order').forEach((c) => { c.classList.toggle('min', !open); $('[data-toggle]', c).setAttribute('aria-expanded', open); open ? openOrders.add(c.dataset.id) : openOrders.delete(c.dataset.id); });
+    saveOpenOrders(); if (open) refreshChats();
+  }
+});
+// ventana emergente: el mismo pedido, en grande y por encima del tablero
+function setPop(id) {
+  popId = id;
+  $$('#ordersList .order.pop').forEach((c) => c.classList.remove('pop'));
+  const card = id && $(`#ordersList .order[data-id="${id}"]`);
+  if (card) { card.classList.add('pop'); card.scrollTop = 0; $('[data-unpop]', card).focus(); const log = $('[data-log]', card); if (log) log.scrollTop = log.scrollHeight; refreshChats(); }
+  else popId = null;
+  $('#ordersList').classList.toggle('has-pop', !!popId);
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && popId && $('#zoom').classList.contains('hidden')) setPop(null); });
+// arrastrar un pedido a otra columna cambia su estado (la última columna lo marca como entregado; cancelar se hace desde el desplegable)
+let dragId = null;
+$('#ordersList').addEventListener('dragstart', (e) => {
+  const card = e.target.closest?.('.order'); if (!card) return;
+  if (card.classList.contains('pop')) return e.preventDefault();
+  dragId = card.dataset.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragId); card.classList.add('dragging');
+});
+$('#ordersList').addEventListener('dragend', () => { dragId = null; $$('#ordersList .dragging, #ordersList .drop').forEach((x) => x.classList.remove('dragging', 'drop')); });
+$('#ordersList').addEventListener('dragover', (e) => {
+  const col = e.target.closest?.('.col'); if (!col || !dragId) return;
+  e.preventDefault(); $$('#ordersList .drop').forEach((x) => x !== col && x.classList.remove('drop')); col.classList.add('drop');
+});
+$('#ordersList').addEventListener('drop', (e) => {
+  const col = e.target.closest?.('.col'); if (!col || !dragId) return;
+  e.preventDefault();
+  const card = $(`#ordersList .order[data-id="${dragId}"]`), to = col.dataset.col;
+  if (card && !ORDER_COLS.find((c) => c.k === to).st.includes(card.dataset.st)) setOrderStatus(card, to);
 });
 $('#ordersList').addEventListener('toggle', (e) => {
   const box = e.target.closest?.('.chat'); if (!box) return;

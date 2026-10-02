@@ -51,7 +51,7 @@ const store = {
 function debounce(fn, ms = 250) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
 // Pedidos: estados y chat (lo usan la tienda y el panel)
-const ORDER_ST = { pendiente: 'Pendiente', pagado: 'Pagado', preparado: 'Listo para retirar', entregado: 'Entregado', cancelado: 'Cancelado' };
+const ORDER_ST = { pendiente: 'Pendiente', preparando: 'En preparación', pagado: 'Pagado', preparado: 'Listo para retirar', entregado: 'Entregado', cancelado: 'Cancelado' };
 // `me` = quién mira: 'tienda' o 'cliente'
 function chatHtml(messages = [], me = 'cliente') {
   if (!messages.length) return '<div class="chat-empty">Todavía no hay mensajes.</div>';

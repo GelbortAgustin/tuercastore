@@ -567,7 +567,7 @@ function withItemImages(items = []) {
 }
 
 // ---- estados, avisos y chat de los pedidos
-const ORDER_STATUS = ['pendiente', 'pagado', 'preparado', 'entregado', 'cancelado'];
+const ORDER_STATUS = ['pendiente', 'preparando', 'preparado', 'pagado', 'entregado', 'cancelado'];
 const MAX_MSGS = 300;
 const safeDec = (v) => { try { return sec.decrypt(v); } catch { return '(no se pudo leer el mensaje)'; } };
 const orderMessages = (o) => (o.messages || []).map((m) => ({ id: m.id, from: m.from, text: safeDec(m.text), at: m.at }));
