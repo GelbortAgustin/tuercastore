@@ -236,6 +236,14 @@
     </div>
   </div>
 
+  <div class="dlg-wrap hidden" id="editions" role="dialog" aria-modal="true" aria-labelledby="edTitle">
+    <div class="dlg">
+      <header><div><small class="muted">Cambiar edición</small><h3 id="edTitle"></h3><span class="muted" id="edSub"></span></div>
+        <button class="btn ghost" id="edClose" aria-label="Cerrar">✕</button></header>
+      <p class="hint" style="margin:0 0 10px">Elegí la edición correcta. Se mantienen la cantidad, el estado, el idioma y el precio manual; el precio automático se recalcula con Card Kingdom.</p>
+      <div class="ed-list" id="edList"></div>
+    </div>
+  </div>
   <div class="zoom hidden" id="zoom" role="dialog" aria-modal="true" aria-label="Vista previa de la carta">
     <figure>
       <img id="zoomImg" alt="">

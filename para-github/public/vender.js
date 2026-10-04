@@ -30,8 +30,12 @@ async function init() {
     search(false);
   });
   $('#sellMore').addEventListener('click', () => { state.search.page++; search(true); });
-  $('#sellResults').addEventListener('change', (e) => { const r = e.target.closest('.res'); if (r) updateOffer(r); });
+  $('#importCond').innerHTML = Object.keys(COND).map((k) => `<option value="${k}">${k} — ${COND[k]}</option>`).join('');
+  $('#importForm').addEventListener('submit', importList);
+  $('#importBar').addEventListener('click', (e) => { if (e.target.closest('[data-addall]')) addAll(); });
+  $('#sellResults').addEventListener('change', (e) => { const r = e.target.closest('.res'); if (r) { updateOffer(r); renderImportBar(); } });
   $('#sellResults').addEventListener('click', onResultClick);
+  $('#sellResults').addEventListener('input', debounce(() => renderImportBar(), 200));
   $('#listItems').addEventListener('click', onListClick);
   $$('[name=payout]').forEach((r) => r.addEventListener('change', renderList));
   $('#sellSend').addEventListener('click', sendSale);
@@ -44,7 +48,7 @@ function onAccountChange() {}
 
 // ---------------------------------------------------------------- búsqueda
 async function search(append) {
-  if (!append) { $('#sellResults').innerHTML = '<div class="spinner"></div>'; $('#sellInfo').textContent = ''; }
+  if (!append) { $('#sellResults').innerHTML = '<div class="spinner"></div>'; $('#sellInfo').textContent = ''; state.imported = null; renderImportBar(); }
   try {
     const { q, prints, page } = state.search;
     const r = await fetch(`/api/vender/buscar?q=${encodeURIComponent(q)}&prints=${prints ? 1 : 0}&page=${page}`);
@@ -66,12 +70,12 @@ function resultHtml(c) {
     <div class="n">${esc(c.name)}</div>
     <div class="m">${setIcon(c.set, c.rarity)}<span>${esc(c.set_name)} · ${esc(c.set.toUpperCase())} #${esc(c.collector_number)}</span></div>
     <div class="f">
-      <select class="input" data-f="finish" aria-label="Acabado">${opts.map((f) => `<option value="${f}">${FINISH[f]}</option>`).join('')}</select>
-      <select class="input" data-f="condition" aria-label="Estado">${Object.keys(COND).map((k) => `<option value="${k}" title="${COND[k]}">${k}</option>`).join('')}</select>
+      <select class="input" data-f="finish" aria-label="Acabado">${opts.map((f) => `<option value="${f}" ${f === c.finish ? 'selected' : ''}>${FINISH[f]}</option>`).join('')}</select>
+      <select class="input" data-f="condition" aria-label="Estado">${Object.keys(COND).map((k) => `<option value="${k}" title="${COND[k]}" ${k === c.condition ? 'selected' : ''}>${k}</option>`).join('')}</select>
     </div>
     <div class="offer-line" data-offer></div>
     <div class="act-row">
-      <div class="qty"><button type="button" data-q="-1" aria-label="Menos">−</button><input data-f="qty" type="number" value="1" min="1" max="99" aria-label="Cantidad"><button type="button" data-q="1" aria-label="Más">+</button></div>
+      <div class="qty"><button type="button" data-q="-1" aria-label="Menos">−</button><input data-f="qty" type="number" value="${c.qty || 1}" min="1" max="99" aria-label="Cantidad"><button type="button" data-q="1" aria-label="Más">+</button></div>
       <button class="btn primary sm" data-act="add">+ Agregar</button>
     </div>
     ${!state.search.prints ? `<button class="btn ghost sm" data-act="prints" data-name="${esc(c.name)}">Ver otras ediciones</button>` : ''}
@@ -101,21 +105,90 @@ function updateOffer(box) {
 function onResultClick(e) {
   const box = e.target.closest('.res'); if (!box) return;
   const qb = e.target.closest('[data-q]');
-  if (qb) { const i = $('[data-f=qty]', box); i.value = Math.min(99, Math.max(1, Number(i.value) + Number(qb.dataset.q))); return; }
+  if (qb) { const i = $('[data-f=qty]', box); i.value = Math.min(99, Math.max(1, Number(i.value) + Number(qb.dataset.q))); renderImportBar(); return; }
   const act = e.target.closest('[data-act]'); if (!act) return;
   if (act.dataset.act === 'prints') {
     $('#sellSearch').q.value = `!"${act.dataset.name}"`; $('#sellSearch').prints.checked = true;
     state.search = { q: `!"${act.dataset.name}"`, prints: true, page: 1 };
     return search(false);
   }
+  const added = addBox(box);
+  if (!added) return;
+  saveList();
+  toast(`Agregaste ${added.qty}× ${added.name}`);
+}
+
+// pasa una carta de los resultados a "Tu lista" (sin guardar todavía)
+function addBox(box) {
   const { card, finish, condition, q } = quoteFor(box);
-  if (!q || !q.cash) return;
+  if (!card || !q || q.tooLow || !q.cash) return null;
   const qty = Math.max(1, Math.min(99, Number($('[data-f=qty]', box).value) || 1));
   const line = { scryfall_id: card.scryfall_id, name: card.name, set: card.set, collector_number: card.collector_number, image: card.image_small || card.image, finish, condition, qty, cash: q.cash, credit: q.credit };
   const existing = state.list.find((l) => lineKey(l) === lineKey(line));
   if (existing) existing.qty = Math.min(99, existing.qty + qty); else state.list.push(line);
+  return { qty, name: card.name };
+}
+
+// ---------------------------------------------------------------- importar lista o mazo
+async function importList(e) {
+  e.preventDefault();
+  const f = e.target, text = f.text.value.trim();
+  if (!text) return toast('Pegá tu lista o el link de tu mazo', true);
+  const btn = $('#importBtn'); btn.disabled = true; btn.textContent = 'Cotizando…';
+  $('#importErr').classList.add('hidden');
+  try {
+    const r = await fetch('/api/vender/importar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'No se pudo importar la lista');
+    const condition = f.condition.value;
+    state.imported = { missing: j.missing || [], truncated: j.truncated, deckName: j.deckName, source: j.source };
+    state.results = j.cards.map((c) => ({ ...c, condition }));
+    state.search = { q: '', prints: true, page: 1 };
+    $('#sellMore').classList.add('hidden'); $('#sellInfo').textContent = '';
+    $('#sellResults').innerHTML = state.results.map(resultHtml).join('');
+    $$('#sellResults .res').forEach(updateOffer);
+    renderImportBar();
+    $('#importBox').open = false;
+    $('#importBar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) { $('#importErr').textContent = err.message; $('#importErr').classList.remove('hidden'); }
+  finally { btn.disabled = false; btn.textContent = 'Cotizar lista'; }
+}
+
+// resumen de la lista importada: cuánto ofrecemos por todo y qué quedó afuera
+function renderImportBar() {
+  const bar = $('#importBar'), imp = state.imported;
+  bar.classList.toggle('hidden', !imp);
+  if (!imp) return;
+  let n = 0, cash = 0, credit = 0, low = 0, noPrice = 0;
+  for (const box of $$('#sellResults .res')) {
+    const { q } = quoteFor(box), qty = Math.max(1, Math.min(99, Number($('[data-f=qty]', box).value) || 1));
+    if (q && !q.tooLow && q.cash > 0) { n += qty; cash += q.cash * qty; credit += q.credit * qty; }
+    else if (q?.tooLow) low += qty; else noPrice += qty;
+  }
+  const out = [
+    low ? `${low} de valor muy bajo (no las compramos)` : '', noPrice ? `${noPrice} sin precio de referencia` : '',
+    imp.missing.length ? `${imp.missing.length} no encontrada${imp.missing.length > 1 ? 's' : ''}` : '',
+  ].filter(Boolean);
+  bar.innerHTML = `<div class="ib-main">
+      <div><small>${imp.deckName ? esc(imp.deckName) : 'Tu lista importada'}</small><b>${n} carta${n === 1 ? '' : 's'} para vender</b></div>
+      <div><small>En dinero</small><b>${money(cash, state.currency)}</b></div>
+      <div class="cr"><small>En crédito</small><b>${money(credit, state.currency)}</b></div>
+      <button type="button" class="btn primary" data-addall ${n ? '' : 'disabled'}>Agregar todas a mi lista</button>
+    </div>
+    ${out.length ? `<p class="hint">Quedan afuera: ${esc(out.join(' · '))}.</p>` : ''}
+    ${imp.missing.length ? `<details class="hint"><summary>Ver las que no encontramos</summary>${imp.missing.map((m) => `<div>${esc(m)}</div>`).join('')}<div>Revisá que el nombre esté en inglés y bien escrito.</div></details>` : ''}
+    ${imp.truncated ? '<p class="hint">La lista era muy larga: cotizamos las primeras 400 cartas distintas.</p>' : ''}
+    <p class="hint">Revisá edición, acabado y estado de cada carta antes de agregarlas: el valor final se confirma al ver las cartas.</p>`;
+}
+
+function addAll() {
+  let cards = 0, lines = 0;
+  for (const box of $$('#sellResults .res')) { const a = addBox(box); if (a) { cards += a.qty; lines++; } }
+  if (!lines) return toast('No hay cartas para agregar', true);
   saveList();
-  toast(`Agregaste ${qty}× ${card.name}`);
+  toast(`Agregaste ${cards} carta${cards === 1 ? '' : 's'} a tu lista`);
+  if (state.list.length > 200) toast('Tu lista tiene más de 200 cartas distintas: vas a tener que enviarla en dos partes', true);
+  $('#sellList').scrollIntoView({ behavior: 'smooth' });
 }
 
 // ---------------------------------------------------------------- lista

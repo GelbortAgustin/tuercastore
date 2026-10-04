@@ -21,6 +21,7 @@ const PORT = Number(process.env.PORT || 3000);
 const SCRYFALL_API = process.env.SCRYFALL_API || 'https://api.scryfall.com';
 const CK_URL = process.env.CK_URL || 'https://api.cardkingdom.com/api/v2/pricelist';
 const DOLAR_API = process.env.DOLAR_API || 'https://dolarapi.com/v1/dolares';
+const ARCHIDEKT_API = process.env.ARCHIDEKT_API || 'https://archidekt.com/api';
 const UA = 'TuercaStore/1.0 (tienda de cartas)';
 
 const FILES = {
@@ -819,6 +820,88 @@ app.get('/api/vender/buscar', asyncH(async (req, res) => {
     quotes: quoteCard(c),
   }));
   res.json({ cards, total: json.total_cards, hasMore: json.has_more, page });
+}));
+
+// ---- importar una lista o un mazo para cotizar
+const buyImportLimit = sec.rateLimiter({ max: 8, windowMs: 60e3, lockMs: 60e3 });
+const MAX_IMPORT = 400; // cartas distintas por importación
+const userErr = (msg, extra = {}) => Object.assign(new Error(msg), { status: 400, ...extra });
+const MOXFIELD_HELP = 'Moxfield no deja leer los mazos desde otras páginas. En tu mazo tocá "More" → "Export" → "Copy for Moxfield" y pegá esa lista acá.';
+
+// mazo público de Archidekt -> [{ qty, finish, ident, raw }]
+async function archidektDeck(id) {
+  let r;
+  try { r = await fetch(`${ARCHIDEKT_API}/decks/${id}/`, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(15000) }); }
+  catch { throw userErr('No pudimos conectar con Archidekt. Probá de nuevo o pegá la lista exportada.'); }
+  if (r.status === 404) throw userErr('No encontramos ese mazo en Archidekt. Revisá el link.');
+  if (r.status === 401 || r.status === 403) throw userErr('Ese mazo de Archidekt es privado. Hacelo público o pegá la lista exportada.');
+  const deck = r.ok ? await r.json().catch(() => null) : null;
+  if (!deck || !Array.isArray(deck.cards)) throw userErr('Archidekt no respondió bien. Probá de nuevo o pegá la lista exportada.');
+  const skip = new Set((deck.categories || []).filter((c) => c.includedInDeck === false).map((c) => c.name)); // "Maybeboard" y similares
+  const entries = [];
+  for (const e of deck.cards) {
+    const cats = e.categories || [];
+    if (cats.length && cats.every((c) => skip.has(c))) continue;
+    const c = e.card || {}, name = c.oracleCard?.name || c.displayName || '';
+    const set = c.edition?.editioncode, num = c.collectorNumber;
+    const ident = /^[0-9a-f-]{36}$/i.test(c.uid || '') ? { id: c.uid } : set && num ? { set: String(set).toLowerCase(), collector_number: String(num) } : name ? { name } : null;
+    if (!ident) continue;
+    entries.push({ qty: e.quantity, finish: /foil|etched/i.test(e.modifier || '') ? 'foil' : 'nonfoil', ident, raw: `${e.quantity} ${name || c.uid}` });
+  }
+  return { name: String(deck.name || '').slice(0, 120), entries };
+}
+
+app.post('/api/vender/importar', asyncH(async (req, res) => {
+  if (!config.buyEnabled) return res.status(403).json({ error: 'Por ahora no estamos comprando cartas' });
+  const ip = req.ip || 'x';
+  if (buyImportLimit.blocked(ip)) return res.status(429).json({ error: 'Demasiadas importaciones seguidas. Esperá un minuto.' });
+  buyImportLimit.fail(ip);
+  const text = String(req.body?.text || '').trim().slice(0, 60000);
+  if (!text) return res.status(400).json({ error: 'Pegá tu lista o el link de tu mazo' });
+  let entries, deckName = '', source = 'lista';
+  try {
+    const link = /^https?:\/\/\S+$/i.test(text) ? new URL(text) : null;
+    if (link) {
+      const host = link.hostname.replace(/^www\./, '').toLowerCase();
+      if (host === 'archidekt.com') {
+        const id = link.pathname.match(/\/decks\/(\d+)/)?.[1];
+        if (!id) throw userErr('Ese link de Archidekt no es de un mazo. Tiene que ser como archidekt.com/decks/123456/…');
+        ({ name: deckName, entries } = await archidektDeck(id)); source = 'archidekt';
+      } else if (host === 'moxfield.com' || host.endsWith('.moxfield.com')) throw userErr(MOXFIELD_HELP, { moxfield: true });
+      else throw userErr('Solo podemos leer links de mazos públicos de Archidekt. De otros sitios, pegá la lista de cartas (una por línea).');
+    } else {
+      entries = text.split(/\r?\n/).map(parseListLine).filter(Boolean).map((l) => ({ qty: l.qty, finish: l.finish || 'nonfoil', ident: identifierFor(l), raw: l.raw.trim() }));
+    }
+  } catch (e) { if (e.status) return res.status(e.status).json({ error: e.message, moxfield: !!e.moxfield }); throw e; }
+  if (!entries.length) return res.status(400).json({ error: 'No encontramos cartas en lo que pegaste. Poné una carta por línea, por ejemplo: 2 Sol Ring' });
+  const truncated = entries.length > MAX_IMPORT;
+  entries = entries.slice(0, MAX_IMPORT);
+
+  const merged = new Map(), missing = [];
+  for (let i = 0; i < entries.length; i += 75) {
+    const chunk = entries.slice(i, i + 75);
+    const json = await scryfall('/cards/collection', { method: 'POST', body: JSON.stringify({ identifiers: chunk.map((e) => e.ident) }) });
+    const notFound = json?.not_found || [], found = json?.data || [];
+    let idx = 0;
+    for (const e of chunk) {
+      if (notFound.some((nf) => sameIdentifier(nf, e.ident))) { missing.push(e.raw); continue; }
+      const raw = found[idx++];
+      if (!raw) { missing.push(e.raw); continue; }
+      const c = withCk(mapCard(raw));
+      const opts = c.finishOptions.length ? c.finishOptions : ['nonfoil'];
+      let finish = resolveFinish(c, e.finish);
+      if (!opts.includes(finish)) finish = finish !== 'nonfoil' && opts.includes('foil') ? 'foil' : opts[0];
+      const qty = Math.max(1, Math.min(99, parseInt(e.qty, 10) || 1));
+      const key = `${c.scryfall_id}|${finish}`;
+      if (merged.has(key)) { const m = merged.get(key); m.qty = Math.min(99, m.qty + qty); continue; }
+      merged.set(key, {
+        scryfall_id: c.scryfall_id, name: c.name, set: c.set, set_name: c.set_name, collector_number: c.collector_number,
+        rarity: c.rarity, image: c.image, image_small: c.image_small, finishOptions: opts, surgePrint: c.surgePrint,
+        quotes: quoteCard(c), qty, finish,
+      });
+    }
+  }
+  res.json({ cards: [...merged.values()], missing, truncated, deckName, source });
 }));
 
 // trae varias cartas de Scryfall por id (de a 75)

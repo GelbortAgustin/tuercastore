@@ -68,6 +68,25 @@
         <label class="check" style="flex:0 0 auto;padding-bottom:10px"><input type="checkbox" name="prints"> Ver todas las ediciones</label>
         <button class="btn primary" type="submit">Buscar</button>
       </form>
+      <details class="card-box import-box" id="importBox">
+        <summary><b>📋 Importar una lista o un mazo</b><span class="muted">Pegá tu lista o el link de tu mazo y cotizamos todo junto</span></summary>
+        <form id="importForm">
+          <label class="field"><span>Lista de cartas o link del mazo</span>
+            <textarea class="input" name="text" rows="6" spellcheck="false" placeholder="https://archidekt.com/decks/123456/mi-mazo
+
+o una carta por línea:
+4 Lightning Bolt
+1 Sol Ring (C21) 263
+2 Counterspell (MH2) 267 *F*"></textarea></label>
+          <div class="import-err hidden" id="importErr" role="alert"></div>
+          <div class="import-row">
+            <label class="field"><span>Estado de las cartas</span><select class="input" name="condition" id="importCond"></select></label>
+            <button class="btn primary" type="submit" id="importBtn">Cotizar lista</button>
+          </div>
+          <p class="hint" style="margin:0"><b>Archidekt:</b> pegá el link de un mazo público. <b>Moxfield:</b> en tu mazo tocá More → Export → Copy for Moxfield y pegá la lista (Moxfield no deja leer sus links desde otras páginas). También sirven las listas de Arena y MTGO. Si la línea indica la edición, cotizamos esa; si no, tomamos una edición cualquiera de la carta: para cotizar otra, buscala por nombre con "Ver todas las ediciones".</p>
+        </form>
+      </details>
+      <div class="import-bar hidden" id="importBar"></div>
       <p class="hint" style="margin:8px 2px 0">Estado: <b>NM</b> casi nueva · <b>LP</b> poco jugada · <b>MP</b> jugada · <b>HP</b> muy jugada.</p>
       <div class="muted" id="sellInfo" style="margin:10px 2px"></div>
       <div class="results" id="sellResults"></div>

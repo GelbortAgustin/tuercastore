@@ -617,3 +617,28 @@ img.zoomable { cursor: zoom-in; }
 .board .order.pop .oc-n { font-size: .88rem; } .board .order.pop .oc-m, .board .order.pop .oc-p { font-size: .8rem; }
 .board .order.pop .chat-log { max-height: 300px; padding: 4px 12px 10px; }
 .order.pop .tag-cancel ~ .pop-st, .order.pop .tag-done ~ .pop-st { display: none; }
+
+/* ---- vender: importar lista o mazo */
+.import-box { margin-top: 10px; padding: 0; }
+.import-box > summary { cursor: pointer; list-style: none; padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.import-box > summary::-webkit-details-marker { display: none; }
+.import-box > summary::after { content: '▾'; margin-left: auto; color: var(--muted); }
+.import-box[open] > summary::after { content: '▴'; }
+.import-box > summary .muted { font-size: .85rem; }
+.import-box form { display: grid; gap: 10px; padding: 0 14px 14px; }
+.import-box textarea { resize: vertical; min-height: 120px; font-family: ui-monospace, Consolas, monospace; font-size: .85rem; line-height: 1.5; }
+.import-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.import-row .field { flex: 1 1 200px; margin: 0; }
+.import-bar { margin-top: 10px; padding: 12px 14px; border: 1px solid rgba(233, 165, 63, .45); border-radius: var(--radius); background: linear-gradient(135deg, rgba(233, 165, 63, .1), transparent 55%), var(--panel); display: grid; gap: 8px; scroll-margin-top: 90px; }
+.import-bar.hidden { display: none; }
+.ib-main { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
+.ib-main > div { display: grid; }
+.ib-main small { color: var(--muted); font-size: .76rem; }
+.ib-main b { font-family: var(--display); font-size: 1.15rem; }
+.ib-main .cr b { color: #cbbcff; }
+.ib-main .btn { margin-left: auto; }
+.import-bar .hint { margin: 0; }
+.import-bar details summary { cursor: pointer; }
+.import-bar details div { padding: 2px 0 0 12px; }
+.import-err { padding: 9px 12px; border-radius: 8px; border: 1px solid rgba(229, 72, 77, .5); background: rgba(229, 72, 77, .12); color: #ffb3b3; font-size: .88rem; }
+.import-err.hidden { display: none; }
