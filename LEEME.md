@@ -100,6 +100,10 @@ La legalidad de cada carta en cada formato sale de Scryfall.
 
 En **Vendé tus cartas**, "Importar una lista o un mazo" cotiza todo junto: el cliente pega una lista (formato Moxfield, Archidekt, Arena o MTGO, una carta por línea) o el link de un mazo **público de Archidekt**, elige el estado y ve cuánto se le ofrece por cada carta y por el total, con un botón para agregar todas a su lista. Los links de Moxfield no se pueden leer (Moxfield bloquea el acceso desde otras páginas): hay que pegar la lista exportada.
 
+### Cotizar cartas (panel)
+
+La pestaña **Cotizar cartas** del panel calcula cuánto pagar por las cartas de un cliente: escribís o pegás las cartas (o el link de un mazo público de Archidekt) y muestra, por carta y en total, el precio de venta, el valor en **dinero** y el valor en **crédito de tienda** según los porcentajes de Configuración (50% y 75% por defecto). Se puede cambiar acabado, estado y cantidad, y copiar el resumen para mandarlo por WhatsApp. No crea ninguna compra ni toca el stock.
+
 ### Pedidos: "preparado", avisos y chat
 
 - La pestaña **Pedidos** es un tablero con columnas: **Nuevo pedido → En preparación → Preparado → Pagado → Entregado / Cancelado**. Cada pedido se minimiza o agranda con un clic (o todos juntos con los botones de arriba) y se mueve de etapa con el botón del siguiente paso, con el desplegable de estado o arrastrándolo a otra columna. Los cancelados quedan marcados en rojo.
