@@ -71,6 +71,7 @@ async function loadStatus() {
       <div class="s"><small>Precios Card Kingdom</small><b>${s.ck.loading ? 'Cargando…' : s.ck.count.toLocaleString('es-AR')}</b><span class="sub">${s.ck.error ? `<span style="color:var(--bad)">${esc(s.ck.error)}</span>` : `actualizado ${ckDate}`}</span></div>`;
     $('#pendingPill').textContent = s.orders.pending; $('#pendingPill').classList.toggle('hidden', !s.orders.pending);
     $('#salesPill').textContent = s.sales?.pending || 0; $('#salesPill').classList.toggle('hidden', !s.sales?.pending);
+    $('#wishPill').textContent = s.wishlist?.pending || 0; $('#wishPill').classList.toggle('hidden', !s.wishlist?.pending);
     $('#ckInfo').innerHTML = s.ck.error ? `<span style="color:var(--bad)">${esc(s.ck.error)}</span>` : `${s.ck.count.toLocaleString('es-AR')} precios · ${ckDate}`;
     const lg = s.legal || {};
     $('#legalInfo').innerHTML = lg.running ? 'Actualizando…' : lg.error ? `<span style="color:var(--bad)">${esc(lg.error)}</span>`
@@ -519,8 +520,29 @@ function waNumber(raw) {
 let clients = [];
 async function loadClients() {
   $('#cliBody').innerHTML = '<tr><td colspan="7"><div class="spinner"></div></td></tr>';
+  loadWishlist();
   try { clients = await api('/clientes'); renderClients(); } catch (err) { toast(err.message, true); }
 }
+// wishlists: avisos de "entró en stock" para mandar por WhatsApp + cartas más buscadas
+async function loadWishlist() {
+  try {
+    const j = await api('/wishlist');
+    $('#wishBox').innerHTML = `<h3>Wishlists</h3>
+      ${j.notices.length ? `<p class="hint" style="margin:0 0 8px">Entraron en stock cartas que estos clientes estaban esperando. Por mail ya se les avisó solo; por WhatsApp se manda desde acá, con el mensaje ya escrito.</p>
+        <div class="mv-list">${j.notices.map((n) => `<div class="mv">
+          <div><b>${esc(n.name)}</b> <span class="muted">📱 ${esc(n.whatsapp)}</span><br><small class="muted">${esc(n.cards.join(' · '))}</small></div>
+          <span style="white-space:nowrap"><a class="btn wa sm" target="_blank" rel="noopener" href="${esc(n.url)}" data-wishsent="${esc(n.userId)}">Avisar por WhatsApp</a>
+            <button class="btn ghost sm" data-wishsent="${esc(n.userId)}" title="Sacar de la lista sin mandar el mensaje">Descartar</button></span>
+        </div>`).join('')}</div>` : '<p class="hint" style="margin:0">No hay avisos de WhatsApp pendientes.</p>'}
+      ${j.wanted.length ? `<h4 style="margin:14px 0 6px">Cartas más buscadas</h4>
+        <div class="wish-wanted">${j.wanted.map((w) => `<span class="badge${w.inStock ? ' in' : ''}" title="${w.inStock ? 'En stock' : 'Sin stock'}">${esc(w.name)}${w.count > 1 ? ` ×${w.count}` : ''}</span>`).join('')}</div>
+        <p class="hint" style="margin:6px 0 0">En verde, las que ya tenés en stock.</p>` : '<p class="hint" style="margin:6px 0 0">Todavía ningún cliente armó su wishlist.</p>'}`;
+  } catch {}
+}
+$('#wishBox').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-wishsent]'); if (!b) return;
+  try { await api(`/wishlist/${b.dataset.wishsent}/avisado`, { method: 'POST' }); loadWishlist(); loadStatus(); } catch (err) { toast(err.message, true); }
+});
 function renderClients() {
   const f = $('#cliFilter').value.trim().toLowerCase();
   const list = clients.filter((c) => !f || `${c.name} ${c.contact}`.toLowerCase().includes(f))
@@ -530,7 +552,7 @@ function renderClients() {
     <td><b>${esc(c.name)}</b></td>
     <td>${c.type === 'phone'
       ? `📱 ${esc(c.contact)} <a class="btn wa sm" target="_blank" rel="noopener" href="https://wa.me/${esc(waNumber(c.contact))}">WhatsApp</a>`
-      : `✉️ <a href="mailto:${esc(c.contact)}">${esc(c.contact)}</a>`}</td>
+      : `✉️ <a href="mailto:${esc(c.contact)}">${esc(c.contact)}</a>${c.whatsapp ? `<br>📱 ${esc(c.whatsapp)} <a class="btn wa sm" target="_blank" rel="noopener" href="https://wa.me/${esc(waNumber(c.whatsapp))}">WhatsApp</a>` : ''}`}${c.wishlist ? `<br><small class="muted">♡ ${c.wishlist} en su wishlist</small>` : ''}</td>
     <td>${c.verified ? '<span style="color:var(--ok)">✔ Sí</span>' : `<span style="color:var(--warn)">Pendiente</span><br><button class="btn ghost sm" data-cli="verify" title="Marcar como verificado si confirmaste por otro medio">Verificar a mano</button>`}</td>
     <td><b class="price" style="font-size:.95rem">${money(c.credit || 0, cfg?.currency)}</b><br><button class="btn ghost sm" data-cli="credit">Ver / ajustar</button></td>
     <td>${d(c.created_at)}</td><td>${d(c.last_login)}</td><td>${c.orders} / ${c.sales || 0}</td>

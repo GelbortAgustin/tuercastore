@@ -658,3 +658,16 @@ img.zoomable { cursor: zoom-in; }
 .quote-t tfoot .r { font-size: 1.05rem; }
 .quote-t .set-ico { width: 15px; height: 15px; vertical-align: -2px; }
 @media (max-width: 800px) { .quote-top { grid-template-columns: 1fr; } .quote-top .offer-cards { grid-template-columns: 1fr 1fr; } }
+
+/* wishlist */
+.wish-row { display: flex; gap: 8px; }
+.wish-row .input { flex: 1 1 auto; min-width: 0; }
+.wishlist #wishItems { margin: 10px 0 14px; }
+.wish-item { display: grid; grid-template-columns: 42px 1fr auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: .9rem; }
+.wish-item img { width: 42px; border-radius: 3px; display: block; }
+.wish-item small { display: block; }
+.wish-item small.in { color: var(--ok); }
+.wish-box { margin-bottom: 14px; }
+.wish-box h3 { margin-top: 0; }
+.wish-wanted { display: flex; flex-wrap: wrap; gap: 6px; }
+.wish-wanted .badge.in { color: var(--ok); border-color: var(--ok); }
