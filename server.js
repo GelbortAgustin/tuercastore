@@ -51,7 +51,6 @@ const DEFAULT_CONFIG = {
   conditionFactors: { NM: 1, LP: 0.85, MP: 0.7, HP: 0.5 }, // si CK no informa precio por condición
   useScryfallFallback: true, // si CK no tiene la carta, usar precio USD de Scryfall
   hideOutOfPrice: false,     // ocultar cartas sin precio
-  requireAccount: false,     // exigir cuenta de cliente para hacer pedidos
   buyEnabled: true,          // módulo "Vendé tus cartas"
   buyCashPercent: 50,        // se paga este % del precio de venta de la tienda, en dinero
   buyCreditPercent: 75,      // … o este % en crédito de tienda
@@ -540,7 +539,7 @@ const asyncH = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => 
 app.get('/api/tienda', (req, res) => {
   res.json({
     storeName: config.storeName, tagline: config.tagline, whatsapp: config.whatsapp ? true : false,
-    instagram: config.instagram, currency: config.currency, requireAccount: !!config.requireAccount,
+    instagram: config.instagram, currency: config.currency,
   });
 });
 
@@ -1033,7 +1032,8 @@ app.get('/api/cuenta/credito', (req, res) => {
 app.post('/api/pedidos', asyncH(async (req, res) => {
   const { items, customer, useCredit } = req.body || {};
   const user = currentUser(req);
-  if (config.requireAccount && !user) return res.status(401).json({ error: 'Ingresá o creá una cuenta para hacer el pedido', needLogin: true });
+  // para comprar hace falta una cuenta verificada, sin excepción
+  if (!user) return res.status(401).json({ error: 'Ingresá o creá una cuenta para hacer el pedido', needLogin: true });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'El carrito está vacío' });
   if (!customer?.name?.trim()) return res.status(400).json({ error: 'Falta tu nombre' });
   const lines = [], problems = [];
@@ -1184,7 +1184,7 @@ app.get('/api/admin/config', (req, res) => res.json(adminConfigView()));
 app.put('/api/admin/config', asyncH(async (req, res) => {
   const b = req.body || {};
   const allowed = ['storeName', 'tagline', 'whatsapp', 'instagram', 'currency', 'dollarRate', 'dollarType', 'autoDollar',
-    'markupPercent', 'roundTo', 'minPrice', 'conditionFactors', 'useScryfallFallback', 'hideOutOfPrice', 'requireAccount',
+    'markupPercent', 'roundTo', 'minPrice', 'conditionFactors', 'useScryfallFallback', 'hideOutOfPrice',
     'buyEnabled', 'buyCashPercent', 'buyCreditPercent', 'buyMinOffer', 'buyRoundTo',
     'buyRequirePhotos', 'buyPhotosEmail'];
   for (const k of allowed) if (k in b) config[k] = b[k];
@@ -1268,7 +1268,29 @@ app.post('/api/admin/inventario', asyncH(async (req, res) => {
 
 // importar lista de texto (formato Arena/Moxfield/MTGO)
 app.post('/api/admin/importar', asyncH(async (req, res) => {
-  const { text, condition = 'NM', lang = 'en', finish: defFinish, foil = false, preview = false } = req.body || {};
+  const { text, items, condition = 'NM', lang = 'en', finish: defFinish, foil = false, preview = false } = req.body || {};
+  // filas ya previsualizadas y corregidas a mano (edición, acabado y cantidad por carta)
+  if (Array.isArray(items)) {
+    const rows = items.filter((it) => it && it.scryfall_id && parseInt(it.qty, 10) > 0);
+    if (!rows.length) return res.status(400).json({ error: 'No hay cartas para importar' });
+    if (rows.length > 1000) return res.status(400).json({ error: 'Máximo 1000 líneas por importación' });
+    const cards = new Map();
+    const ids = [...new Set(rows.map((it) => String(it.scryfall_id)))];
+    for (let i = 0; i < ids.length; i += 75) {
+      const json = await scryfall('/cards/collection', { method: 'POST', body: JSON.stringify({ identifiers: ids.slice(i, i + 75).map((id) => ({ id })) }) });
+      for (const c of json?.data || []) cards.set(c.id, mapCard(c));
+    }
+    let added = 0, merged = 0; const missing = [];
+    for (const it of rows) {
+      const card = cards.get(String(it.scryfall_id));
+      if (!card) { missing.push(String(it.raw || it.scryfall_id)); continue; }
+      const r = addToInventory(card, { finish: normalizeFinish(it.finish), condition, lang, qty: it.qty });
+      fixScryfallUsd(r.item);
+      r.merged ? merged++ : added++;
+    }
+    await saveInventory();
+    return res.json({ added, merged, missing });
+  }
   const defaultFinish = normalizeFinish(defFinish, foil);
   const lineFinish = (line, card) => resolveFinish(card, line.finish || defaultFinish);
   const parsed = String(text || '').split(/\r?\n/).map(parseListLine).filter(Boolean);

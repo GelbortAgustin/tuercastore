@@ -41,6 +41,7 @@
         <button role="tab" data-tab="inventario" aria-selected="false">Inventario</button>
         <button role="tab" data-tab="pedidos" aria-selected="false">Pedidos <span class="pill hidden" id="pendingPill"></span></button>
         <button role="tab" data-tab="compras" aria-selected="false">Compras <span class="pill hidden" id="salesPill"></span></button>
+        <button role="tab" data-tab="cotizar" aria-selected="false">Cotizar cartas</button>
         <button role="tab" data-tab="clientes" aria-selected="false">Clientes</button>
         <button role="tab" data-tab="config" aria-selected="false">Configuración</button>
       </nav>
@@ -74,7 +75,7 @@
             <button class="btn" id="importPreview" type="button">Previsualizar</button>
             <button class="btn primary" id="importGo" type="button">Importar al stock</button>
           </div>
-          <p class="hint">Sin edición se toma la impresión por defecto de Scryfall. Marcá por línea al final: <code>*F*</code> o <code>foil</code> para foil, <code>*S*</code> o <code>surge</code> para Surge Foil. Si la impresión elegida es surge, un foil se carga como Surge Foil automáticamente.</p>
+          <p class="hint">Sin edición se toma la impresión por defecto de Scryfall. Marcá por línea al final: <code>*F*</code> o <code>foil</code> para foil, <code>*S*</code> o <code>surge</code> para Surge Foil. Si la impresión elegida es surge, un foil se carga como Surge Foil automáticamente. Con <b>Previsualizar</b> podés corregir la edición, el acabado y la cantidad de cada carta antes de importar.</p>
         </div>
         <div id="importResult" style="margin-top:16px"></div>
       </section>
@@ -114,6 +115,39 @@
         <div id="salesList"></div>
       </section>
 
+      <!-- COTIZAR CARTAS (cuánto pagamos por las cartas de un cliente) -->
+      <section data-panel="cotizar" class="hidden">
+        <div class="quote-top">
+          <form class="card-box" id="quoteForm">
+            <label class="field"><span>Cartas a cotizar</span>
+              <textarea class="input" name="text" rows="5" spellcheck="false" placeholder="Una carta por línea (con o sin cantidad y edición):
+Sol Ring
+4 Lightning Bolt
+1 Ragavan, Nimble Pilferer (MH2) 138 *F*
+
+o el link de un mazo público de Archidekt"></textarea></label>
+            <div class="row-form">
+              <label class="field" style="flex:1 1 180px"><span>Estado</span><select class="input" name="condition" id="quoteCond"></select></label>
+              <button class="btn primary" type="submit" id="quoteBtn">Cotizar</button>
+              <button class="btn" type="button" id="quoteClear">Limpiar</button>
+            </div>
+            <p class="hint" style="margin:0">Las cartas se van sumando a la tabla. Los porcentajes se cambian en <a href="#" data-goto="config">Configuración</a>. Links de Moxfield no: pegá la lista exportada.</p>
+          </form>
+          <div class="offer-cards">
+            <div class="offer cash"><b id="qCashPct">50%</b><span>en <strong>dinero</strong></span><em id="qCashTot">$ 0</em></div>
+            <div class="offer credit"><b id="qCreditPct">75%</b><span>en <strong>crédito de tienda</strong></span><em id="qCreditTot">$ 0</em></div>
+          </div>
+        </div>
+        <div id="quoteMsg"></div>
+        <div class="card-box hidden" id="quoteBox" style="padding:0;overflow:auto">
+          <table class="t quote-t">
+            <thead><tr><th></th><th>Carta</th><th>Acabado</th><th>Estado</th><th>Cant.</th><th class="r">Precio de venta</th><th class="r" id="qThCash">Dinero</th><th class="r" id="qThCredit">Crédito</th><th></th></tr></thead>
+            <tbody id="quoteBody"></tbody>
+            <tfoot><tr><td colspan="4"><button class="btn sm" type="button" id="quoteCopy">Copiar resumen</button></td><td id="qN"></td><td class="r" id="qSale"></td><td class="r cash" id="qCash"></td><td class="r credit" id="qCredit"></td><td></td></tr></tfoot>
+          </table>
+        </div>
+      </section>
+
       <!-- CLIENTES -->
       <section data-panel="clientes" class="hidden">
         <div class="row-form" style="margin-bottom:12px">
@@ -145,7 +179,6 @@
             <label class="field"><span>Precio mínimo por carta</span><input class="input" type="number" step="any" min="0" name="minPrice"></label>
             <label class="check"><input type="checkbox" name="useScryfallFallback"> Si CK no tiene la carta, usar el precio de Scryfall</label>
             <label class="check"><input type="checkbox" name="hideOutOfPrice"> Ocultar cartas sin precio</label>
-            <label class="check"><input type="checkbox" name="requireAccount"> Exigir cuenta para hacer pedidos</label>
           </div>
           <div class="card-box">
             <h3>Dólar</h3>

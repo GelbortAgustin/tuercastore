@@ -47,6 +47,7 @@ function showTab(name) {
   if (name === 'config') fillConfig();
   if (name === 'clientes') loadClients();
   if (name === 'compras') loadSales();
+  if (name === 'cotizar') renderQuote();
 }
 $$('[data-tab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
 document.addEventListener('click', (e) => { const g = e.target.closest('[data-goto]'); if (g) { e.preventDefault(); showTab(g.dataset.goto); } });
@@ -176,34 +177,86 @@ $('#results').addEventListener('click', async (e) => {
 });
 
 // ---------------------------------------------------------------- importar
+// filas de la previsualización: se pueden corregir (edición, acabado, cantidad) antes de importar
+let importRows = null;
+
+// acabado que queda al pasar una fila a otra impresión
+function fitFinish(card, f) {
+  const o = card.finishOptions || [];
+  if (f === 'foil' && card.surgePrint) f = 'surge';
+  if (!o.length || o.includes(f)) return f;
+  return f !== 'nonfoil' && o.includes('foil') ? 'foil' : o[0];
+}
+
+function renderImport() {
+  const ok = importRows.filter((r) => r.card).length;
+  $('#importResult').innerHTML = `<p class="muted">${ok} de ${importRows.length} líneas reconocidas. Podés corregir la edición, el acabado y la cantidad de cada carta antes de importar (cantidad 0 = no se importa).</p>
+    <div class="table-scroll"><table class="t"><thead><tr><th></th><th>Línea</th><th>Carta encontrada</th><th>Acabado</th><th>Cant.</th><th>Ref. USD</th><th>Precio venta c/u</th></tr></thead><tbody>
+    ${importRows.map((r, i) => {
+      if (!r.card) return `<tr><td></td><td>${esc(r.raw)}</td><td colspan="5" style="color:var(--bad)">No encontrada en Scryfall</td></tr>`;
+      const rf = refFor(r.card, r.finish); const ref = rf.usd;
+      const opts = r.card.finishOptions?.length ? [...r.card.finishOptions] : ['nonfoil'];
+      if (!opts.includes(r.finish)) opts.push(r.finish);
+      return `<tr data-i="${i}"><td><img class="th" src="${esc(r.card.image_small || r.card.image)}" alt=""></td><td>${esc(r.raw)}</td>
+        <td>${esc(r.card.name)}<br><span class="muted">${setIcon(r.card.set, r.card.rarity)} ${esc(r.card.set.toUpperCase())} #${esc(r.card.collector_number)}</span>
+          <button type="button" class="link-btn" data-edition title="Cambiar la edición de esta carta">✎ Cambiar edición</button></td>
+        <td><select class="input" data-k="finish" aria-label="Acabado">${opts.map((f) => `<option value="${f}" ${f === r.finish ? 'selected' : ''}>${FINISH[f]}</option>`).join('')}</select></td>
+        <td><input class="input" data-k="qty" type="number" min="0" value="${r.qty}" style="width:70px" aria-label="Cantidad"></td>
+        <td>${usd(ref)} ${rf.src === 'scryfall' ? '<span class="src scryfall">Scryfall</span>' : rf.src ? '' : '<span class="src none">Sin precio</span>'}</td><td>${money(estimate(ref), cfg.currency)}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
 async function doImport(preview) {
+  const rows = preview ? null : importRows;
   const text = $('#importText').value.trim();
-  if (!text) return toast('Pegá una lista primero', true);
-  const body = { text, condition: $('#importCond').value, lang: $('#importLang').value, finish: $('#importFinish').value, preview };
+  if (!rows && !text) return toast('Pegá una lista primero', true);
+  const base = { condition: $('#importCond').value, lang: $('#importLang').value };
+  const items = rows && rows.filter((r) => r.card && r.qty > 0).map((r) => ({ scryfall_id: r.card.scryfall_id, finish: r.finish, qty: r.qty, raw: r.raw }));
+  if (rows && !items.length) return toast('No hay cartas para importar', true);
+  const body = rows ? { ...base, items } : { ...base, text, finish: $('#importFinish').value, preview };
   $('#importResult').innerHTML = '<div class="spinner"></div>';
   try {
     const j = await api('/importar', { method: 'POST', body });
     if (preview) {
-      const ok = j.results.filter((r) => r.card).length;
-      $('#importResult').innerHTML = `<p class="muted">${ok} de ${j.results.length} líneas reconocidas.</p>
-        <div class="table-scroll"><table class="t"><thead><tr><th></th><th>Línea</th><th>Carta encontrada</th><th>Cant.</th><th>Ref. USD</th><th>Precio venta c/u</th></tr></thead><tbody>
-        ${j.results.map((r) => {
-          if (!r.card) return `<tr><td></td><td>${esc(r.raw)}</td><td colspan="4" style="color:var(--bad)">No encontrada en Scryfall</td></tr>`;
-          const rf = refFor(r.card, r.finish); const ref = rf.usd;
-          return `<tr><td><img class="th" src="${esc(r.card.image_small || r.card.image)}" alt=""></td><td>${esc(r.raw)}</td>
-            <td>${esc(r.card.name)} <span class="muted">${esc(r.card.set.toUpperCase())} #${esc(r.card.collector_number)}</span> ${finishBadge(r)}</td>
-            <td>${r.qty}</td><td>${usd(ref)} ${rf.src === 'scryfall' ? '<span class="src scryfall">Scryfall</span>' : rf.src ? '' : '<span class="src none">Sin precio</span>'}</td><td>${money(estimate(ref), cfg.currency)}</td></tr>`;
-        }).join('')}</tbody></table></div>`;
+      importRows = j.results;
+      renderImport();
     } else {
+      const missing = rows ? [...rows.filter((r) => !r.card).map((r) => r.raw), ...j.missing] : j.missing;
+      importRows = null;
       $('#importResult').innerHTML = `<div class="card-box"><b>Listo:</b> ${j.added} nuevas, ${j.merged} sumadas a stock existente.
-        ${j.missing.length ? `<p style="color:var(--bad)">No encontradas (${j.missing.length}):</p><pre class="oracle">${esc(j.missing.join('\n'))}</pre>` : ''}</div>`;
-      if (!j.missing.length) $('#importText').value = '';
+        ${missing.length ? `<p style="color:var(--bad)">No encontradas (${missing.length}):</p><pre class="oracle">${esc(missing.join('\n'))}</pre>` : ''}</div>`;
+      if (!missing.length) $('#importText').value = '';
       loadStatus();
     }
-  } catch (err) { $('#importResult').innerHTML = ''; toast(err.message, true); }
+  } catch (err) { if (importRows) renderImport(); else $('#importResult').innerHTML = ''; toast(err.message, true); }
 }
 $('#importPreview').addEventListener('click', () => doImport(true));
 $('#importGo').addEventListener('click', () => doImport(false));
+
+// si cambia la lista o el acabado por defecto, la previsualización editada ya no vale
+function dropImportPreview() {
+  if (!importRows) return;
+  importRows = null;
+  $('#importResult').innerHTML = '<p class="muted">Cambiaste la lista: volvé a previsualizar para editar las cartas.</p>';
+}
+$('#importText').addEventListener('input', dropImportPreview);
+$('#importFinish').addEventListener('change', dropImportPreview);
+
+$('#importResult').addEventListener('change', (e) => {
+  const el = e.target.closest('[data-k]'); if (!el || !importRows) return;
+  const r = importRows[el.closest('tr').dataset.i];
+  if (el.dataset.k === 'finish') { r.finish = el.value; renderImport(); }
+  else { r.qty = Math.max(0, parseInt(el.value, 10) || 0); el.value = r.qty; }
+});
+$('#importResult').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-edition]') || !importRows) return;
+  const r = importRows[e.target.closest('tr').dataset.i];
+  openEditions({ ...r.card, finish: r.finish, condition: $('#importCond').value, qty: r.qty }, (card) => {
+    r.card = card; r.finish = fitFinish(card, r.finish);
+    renderImport();
+    toast(`Edición cambiada a ${card.set.toUpperCase()} #${card.collector_number}`);
+  });
+});
 
 // ---------------------------------------------------------------- inventario
 async function loadInventory() {
@@ -258,17 +311,19 @@ $('#invBody').addEventListener('change', async (e) => {
   } catch (err) { toast(err.message, true); }
 });
 // ---- cambiar la edición de una carta en stock
-let editionFor = null;
-async function openEditions(item) {
-  editionFor = item;
+// con onPick (importar lista) no toca el stock: devuelve la impresión elegida
+let editionFor = null, editionPick = null, editionCards = [];
+async function openEditions(item, onPick = null) {
+  editionFor = item; editionPick = onPick; editionCards = [];
   $('#edTitle').textContent = item.name;
-  $('#edSub').textContent = `Ahora: ${item.set_name} (${item.set.toUpperCase()} #${item.collector_number}) · ${FINISH[finishOf(item)]} · ${item.condition} · ${item.qty} en stock`;
+  $('#edSub').textContent = `Ahora: ${item.set_name} (${item.set.toUpperCase()} #${item.collector_number}) · ${FINISH[finishOf(item)]} · ${item.condition} · ${item.qty} ${onPick ? 'a importar' : 'en stock'}`;
   $('#edList').innerHTML = '<div class="spinner"></div>';
   $('#editions').classList.remove('hidden'); $('#edClose').focus();
   try {
     const { cards } = await api(`/scryfall/ediciones?name=${encodeURIComponent(item.name)}`);
     if (editionFor !== item) return;
     if (!cards.length) { $('#edList').innerHTML = '<div class="empty">No encontré otras ediciones de esta carta.</div>'; return; }
+    editionCards = cards;
     const f = finishOf(item);
     $('#edList').innerHTML = cards.map((c) => {
       const cur = c.scryfall_id === item.scryfall_id;
@@ -284,10 +339,16 @@ async function openEditions(item) {
     }).join('');
   } catch (err) { $('#edList').innerHTML = `<div class="empty">${esc(err.message)}</div>`; }
 }
-function closeEditions() { $('#editions').classList.add('hidden'); editionFor = null; }
+function closeEditions() { $('#editions').classList.add('hidden'); editionFor = null; editionPick = null; }
 $('#editions').addEventListener('click', async (e) => {
   if (e.target.id === 'editions' || e.target.closest('#edClose')) return closeEditions();
   const b = e.target.closest('[data-sid]'); if (!b || !editionFor) return;
+  if (editionPick) {
+    const card = editionCards.find((c) => c.scryfall_id === b.dataset.sid), pick = editionPick;
+    closeEditions();
+    if (card) pick(card);
+    return;
+  }
   const item = editionFor;
   $$('#edList .ed').forEach((x) => { x.disabled = true; });
   try {
@@ -780,6 +841,79 @@ $('#ckRefresh').addEventListener('click', async (e) => {
   try { const j = await api('/ck/actualizar', { method: 'POST' }); toast(j.error ? j.error : `${j.count.toLocaleString('es-AR')} precios actualizados`, !!j.error); loadStatus(); }
   catch (err) { toast(err.message, true); }
   finally { e.target.disabled = false; e.target.textContent = 'Actualizar precios ahora'; }
+});
+
+// ---------------------------------------------------------------- cotizar cartas (cuánto pagamos en dinero y en crédito)
+let quoteRows = [], quoteInfo = { cashPercent: 50, creditPercent: 75, minOffer: 0, currency: 'ARS' };
+const quoteOf = (r) => r.quotes?.[r.finish]?.[r.condition] || null;
+function paintQuotePct() {
+  quoteInfo.cashPercent = Number(cfg?.buyCashPercent ?? quoteInfo.cashPercent); quoteInfo.creditPercent = Number(cfg?.buyCreditPercent ?? quoteInfo.creditPercent);
+  quoteInfo.currency = cfg?.currency || quoteInfo.currency;
+  $('#qCashPct').textContent = `${quoteInfo.cashPercent}%`; $('#qCreditPct').textContent = `${quoteInfo.creditPercent}%`;
+  $('#qThCash').textContent = `Dinero ${quoteInfo.cashPercent}%`; $('#qThCredit').textContent = `Crédito ${quoteInfo.creditPercent}%`;
+  if (!$('#quoteCond').options.length) $('#quoteCond').innerHTML = Object.keys(COND).map((c) => `<option value="${c}">${c} — ${COND[c]}</option>`).join('');
+}
+function renderQuote() {
+  paintQuotePct();
+  const cur = quoteInfo.currency;
+  let n = 0, sale = 0, cash = 0, credit = 0;
+  $('#quoteBody').innerHTML = quoteRows.map((r, i) => {
+    const q = quoteOf(r);
+    if (q) { n += r.qty; sale += q.sale * r.qty; cash += q.cash * r.qty; credit += q.credit * r.qty; }
+    return `<tr data-i="${i}">
+      <td><img class="th zoomable" src="${esc(r.image_small || r.image || '')}" alt="" loading="lazy" data-zoom="${esc(r.image || r.image_small || '')}" data-caption="${esc(`${r.name} · ${r.set.toUpperCase()} #${r.collector_number}`)}"></td>
+      <td><b>${esc(r.name)}</b><br><span class="muted">${setIcon(r.set, r.rarity)} ${esc(r.set_name)} · ${esc(r.set.toUpperCase())} #${esc(r.collector_number)}</span></td>
+      <td><select class="input" data-q="finish">${r.finishOptions.map((f) => `<option value="${f}" ${f === r.finish ? 'selected' : ''}>${FINISH[f]}</option>`).join('')}</select></td>
+      <td><select class="input" data-q="condition">${Object.keys(COND).map((c) => `<option ${c === r.condition ? 'selected' : ''}>${c}</option>`).join('')}</select></td>
+      <td><input class="input" data-q="qty" type="number" min="1" max="99" value="${r.qty}" style="width:64px"></td>
+      ${q ? `<td class="r">${money(q.sale, cur)}${r.qty > 1 ? `<small class="muted"> c/u</small>` : ''}<br><span class="src ${q.source}">${q.source === 'cardkingdom' ? 'CK' : 'Scryfall'}</span></td>
+        <td class="r cash"><b>${money(q.cash * r.qty, cur)}</b>${q.belowMin ? '<br><small class="low" title="La oferta en dinero queda por debajo del mínimo de compra configurado">bajo el mínimo</small>' : ''}</td>
+        <td class="r credit"><b>${money(q.credit * r.qty, cur)}</b></td>`
+        : '<td class="r muted" colspan="3">Sin precio de referencia para este acabado</td>'}
+      <td><button class="btn ghost sm danger" data-qdel title="Quitar" aria-label="Quitar ${esc(r.name)}">✕</button></td>
+    </tr>`;
+  }).join('');
+  $('#quoteBox').classList.toggle('hidden', !quoteRows.length);
+  $('#qN').textContent = n ? `${n} carta${n === 1 ? '' : 's'}` : '';
+  $('#qSale').textContent = money(sale, cur); $('#qCash').textContent = money(cash, cur); $('#qCredit').textContent = money(credit, cur);
+  $('#qCashTot').textContent = money(cash, cur); $('#qCreditTot').textContent = money(credit, cur);
+  return { n, sale, cash, credit };
+}
+$('#quoteForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target, text = f.text.value.trim();
+  if (!text) return toast('Escribí o pegá las cartas a cotizar', true);
+  const btn = $('#quoteBtn'); btn.disabled = true; btn.textContent = 'Cotizando…';
+  try {
+    const j = await api('/cotizar', { method: 'POST', body: { text } });
+    Object.assign(quoteInfo, { cashPercent: j.cashPercent, creditPercent: j.creditPercent, minOffer: j.minOffer, currency: j.currency });
+    if (cfg) { cfg.buyCashPercent = j.cashPercent; cfg.buyCreditPercent = j.creditPercent; }
+    for (const c of j.cards) {
+      const same = quoteRows.find((r) => r.scryfall_id === c.scryfall_id && r.finish === c.finish && r.condition === f.condition.value);
+      if (same) same.qty = Math.min(99, same.qty + c.qty); else quoteRows.push({ ...c, condition: f.condition.value });
+    }
+    $('#quoteMsg').innerHTML = j.missing.length || j.truncated ? `<div class="alert" style="margin:10px 0">${j.missing.length ? `No encontré: <b>${esc(j.missing.join(' · '))}</b>. Revisá que el nombre esté en inglés.` : ''}${j.truncated ? ' La lista era muy larga: coticé las primeras 400 cartas distintas.' : ''}</div>` : '';
+    f.text.value = ''; renderQuote(); f.text.focus();
+  } catch (err) { toast(err.message, true); }
+  finally { btn.disabled = false; btn.textContent = 'Cotizar'; }
+});
+$('#quoteClear').addEventListener('click', () => { quoteRows = []; $('#quoteMsg').innerHTML = ''; renderQuote(); });
+$('#quoteBody').addEventListener('change', (e) => {
+  const el = e.target.closest('[data-q]'); if (!el) return;
+  const r = quoteRows[el.closest('tr').dataset.i]; if (!r) return;
+  r[el.dataset.q] = el.dataset.q === 'qty' ? Math.max(1, Math.min(99, parseInt(el.value, 10) || 1)) : el.value;
+  renderQuote();
+});
+$('#quoteBody').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-qdel]')) return;
+  quoteRows.splice(Number(e.target.closest('tr').dataset.i), 1); renderQuote();
+});
+$('#quoteCopy').addEventListener('click', async () => {
+  const cur = quoteInfo.currency, t = renderQuote();
+  const lines = quoteRows.map((r) => { const q = quoteOf(r); return `• ${r.qty}x ${r.name} (${r.set.toUpperCase()} #${r.collector_number})${r.finish !== 'nonfoil' ? ' ' + FINISH[r.finish] : ''} ${r.condition} — ${q ? `dinero ${money(q.cash * r.qty, cur)} / crédito ${money(q.credit * r.qty, cur)}` : 'sin precio'}`; });
+  const text = [`Cotización ${cfg?.storeName || 'Tuerca Store'} (${t.n} cartas)`, '', ...lines, '', `Total en dinero (${quoteInfo.cashPercent}%): ${money(t.cash, cur)}`, `Total en crédito de tienda (${quoteInfo.creditPercent}%): ${money(t.credit, cur)}`, 'Valores sujetos a revisión de las cartas.'].join('\n');
+  try { await navigator.clipboard.writeText(text); toast('Resumen copiado: pegalo en WhatsApp o en el chat'); }
+  catch { toast('No se pudo copiar', true); }
 });
 
 // ---------------------------------------------------------------- vista previa de cartas (pedidos y compras)

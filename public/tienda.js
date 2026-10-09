@@ -109,12 +109,16 @@ function bindUi() {
     const r = e.target.closest('[data-remove]');
     if (r) { state.cart = state.cart.filter((c) => c.id !== r.dataset.remove); saveCart(); }
   });
-  $('#goCheckout').addEventListener('click', () => {
-    if (state.shop.requireAccount && !state.user) {
+  $('#goCheckout').addEventListener('click', async () => {
+    // confirma con el servidor que la sesión sigue activa (pudo vencer o cerrarse en otra pestaña)
+    const btn = $('#goCheckout'); btn.disabled = true;
+    await loadAccount();
+    btn.disabled = false;
+    if (!state.user) {
       const again = () => { openCart(); $('#goCheckout').click(); };
       if (state.pending) { toast('Confirmá tu cuenta con el código para hacer el pedido'); return openVerify({ sentTo: state.pending.contact }, again); }
-      toast('Ingresá o creá una cuenta para hacer tu pedido');
-      return openAuth('ingresar', again);
+      toast('Para comprar necesitás una cuenta. Creala en un minuto.');
+      return openAuth('registro', again);
     }
     $('#checkout').classList.remove('hidden'); $('#goCheckout').classList.add('hidden');
     prefillCheckout();

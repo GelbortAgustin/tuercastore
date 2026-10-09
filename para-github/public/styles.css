@@ -642,3 +642,19 @@ img.zoomable { cursor: zoom-in; }
 .import-bar details div { padding: 2px 0 0 12px; }
 .import-err { padding: 9px 12px; border-radius: 8px; border: 1px solid rgba(229, 72, 77, .5); background: rgba(229, 72, 77, .12); color: #ffb3b3; font-size: .88rem; }
 .import-err.hidden { display: none; }
+
+/* ---- panel: cotizar cartas */
+.quote-top { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 14px; align-items: stretch; margin-bottom: 12px; }
+.quote-top form { display: grid; gap: 10px; }
+.quote-top textarea { resize: vertical; font-family: ui-monospace, Consolas, monospace; font-size: .85rem; line-height: 1.5; }
+.quote-top .offer-cards { grid-template-columns: 1fr; }
+.quote-top .offer { align-content: center; }
+.quote-top .offer em { font-style: normal; font-family: var(--display); font-size: 1.5rem; font-weight: 700; margin-top: 6px; color: var(--text); }
+.quote-t .r { text-align: right; white-space: nowrap; }
+.quote-t td.cash b, .quote-t tfoot .cash { color: var(--ok); }
+.quote-t td.credit b, .quote-t tfoot .credit { color: #cbbcff; }
+.quote-t .low { color: var(--warn); }
+.quote-t tfoot td { padding: 10px 8px; font-weight: 700; font-family: var(--display); border-top: 1px solid var(--line-2); }
+.quote-t tfoot .r { font-size: 1.05rem; }
+.quote-t .set-ico { width: 15px; height: 15px; vertical-align: -2px; }
+@media (max-width: 800px) { .quote-top { grid-template-columns: 1fr; } .quote-top .offer-cards { grid-template-columns: 1fr 1fr; } }

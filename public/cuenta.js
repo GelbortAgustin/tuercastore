@@ -106,7 +106,7 @@ function openAuth(mode = 'ingresar', after) {
   form.querySelector(reg ? '[name=name]' : '[name=contact]').focus();
   if (reg) fetch('/api/cuenta/opciones').then((r) => r.json()).then((o) => {
     if (!o.email) {
-      $('#authErr').textContent = 'El registro de cuentas nuevas no está disponible por el momento. Podés comprar sin cuenta.';
+      $('#authErr').textContent = 'El registro de cuentas nuevas no está disponible por el momento. Escribinos y te ayudamos con tu pedido.';
       $('#authErr').classList.remove('hidden'); form.querySelector('[type=submit]').disabled = true;
     }
   }).catch(() => {});

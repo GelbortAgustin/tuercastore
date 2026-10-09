@@ -51,7 +51,6 @@ const DEFAULT_CONFIG = {
   conditionFactors: { NM: 1, LP: 0.85, MP: 0.7, HP: 0.5 }, // si CK no informa precio por condición
   useScryfallFallback: true, // si CK no tiene la carta, usar precio USD de Scryfall
   hideOutOfPrice: false,     // ocultar cartas sin precio
-  requireAccount: false,     // exigir cuenta de cliente para hacer pedidos
   buyEnabled: true,          // módulo "Vendé tus cartas"
   buyCashPercent: 50,        // se paga este % del precio de venta de la tienda, en dinero
   buyCreditPercent: 75,      // … o este % en crédito de tienda
@@ -241,7 +240,7 @@ function saleFromUsd(usd) {
 }
 
 // Cotización de compra: % del precio al que la tienda la vendería (sin precio mínimo ni precio fijo)
-function buyQuote(card, finish, condition) {
+function buyQuote(card, finish, condition, { ignoreMin = false } = {}) {
   const probe = { scryfall_id: card.scryfall_id, finish, condition, surgePrint: card.surgePrint };
   let usd = ckUsd(probe), source = usd ? 'cardkingdom' : null;
   if (!usd && config.useScryfallFallback) {
@@ -254,7 +253,7 @@ function buyQuote(card, finish, condition) {
   const down = (v) => (step > 0 ? Math.floor(v / step) * step : Math.floor(v * 100) / 100);
   const cash = down(sale * (Number(config.buyCashPercent) || 0) / 100);
   const credit = down(sale * (Number(config.buyCreditPercent) || 0) / 100);
-  if (cash < (Number(config.buyMinOffer) || 0)) return { sale, cash: 0, credit: 0, source, tooLow: true };
+  if (cash < (Number(config.buyMinOffer) || 0)) return ignoreMin ? { sale, cash, credit, source, belowMin: true } : { sale, cash: 0, credit: 0, source, tooLow: true };
   return { sale, cash, credit, source };
 }
 
@@ -540,7 +539,7 @@ const asyncH = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => 
 app.get('/api/tienda', (req, res) => {
   res.json({
     storeName: config.storeName, tagline: config.tagline, whatsapp: config.whatsapp ? true : false,
-    instagram: config.instagram, currency: config.currency, requireAccount: !!config.requireAccount,
+    instagram: config.instagram, currency: config.currency,
   });
 });
 
@@ -786,11 +785,11 @@ const BUY_STATUS = ['pendiente', 'aceptada', 'completada', 'rechazada', 'cancela
 const buySearchLimit = sec.rateLimiter({ max: 40, windowMs: 60e3, lockMs: 60e3 });
 const CONDS = ['NM', 'LP', 'MP', 'HP'];
 
-function quoteCard(card) {
+function quoteCard(card, opts) {
   const quotes = {};
   for (const f of card.finishOptions || ['nonfoil']) {
     quotes[f] = {};
-    for (const cnd of CONDS) quotes[f][cnd] = buyQuote(card, f, cnd);
+    for (const cnd of CONDS) quotes[f][cnd] = buyQuote(card, f, cnd, opts);
   }
   return quotes;
 }
@@ -856,10 +855,16 @@ app.post('/api/vender/importar', asyncH(async (req, res) => {
   const ip = req.ip || 'x';
   if (buyImportLimit.blocked(ip)) return res.status(429).json({ error: 'Demasiadas importaciones seguidas. Esperá un minuto.' });
   buyImportLimit.fail(ip);
-  const text = String(req.body?.text || '').trim().slice(0, 60000);
-  if (!text) return res.status(400).json({ error: 'Pegá tu lista o el link de tu mazo' });
+  try { res.json(await quoteList(req.body?.text)); }
+  catch (e) { if (e.status) return res.status(e.status).json({ error: e.message, moxfield: !!e.moxfield }); throw e; }
+}));
+
+// lista de texto o link de Archidekt -> cartas con su cotización de compra (lo usan la tienda y el panel)
+async function quoteList(rawText, quoteOpts) {
+  const text = String(rawText || '').trim().slice(0, 60000);
+  if (!text) throw userErr('Pegá tu lista o el link de tu mazo');
   let entries, deckName = '', source = 'lista';
-  try {
+  {
     const link = /^https?:\/\/\S+$/i.test(text) ? new URL(text) : null;
     if (link) {
       const host = link.hostname.replace(/^www\./, '').toLowerCase();
@@ -872,8 +877,8 @@ app.post('/api/vender/importar', asyncH(async (req, res) => {
     } else {
       entries = text.split(/\r?\n/).map(parseListLine).filter(Boolean).map((l) => ({ qty: l.qty, finish: l.finish || 'nonfoil', ident: identifierFor(l), raw: l.raw.trim() }));
     }
-  } catch (e) { if (e.status) return res.status(e.status).json({ error: e.message, moxfield: !!e.moxfield }); throw e; }
-  if (!entries.length) return res.status(400).json({ error: 'No encontramos cartas en lo que pegaste. Poné una carta por línea, por ejemplo: 2 Sol Ring' });
+  }
+  if (!entries.length) throw userErr('No encontramos cartas en lo que pegaste. Poné una carta por línea, por ejemplo: 2 Sol Ring');
   const truncated = entries.length > MAX_IMPORT;
   entries = entries.slice(0, MAX_IMPORT);
 
@@ -897,12 +902,12 @@ app.post('/api/vender/importar', asyncH(async (req, res) => {
       merged.set(key, {
         scryfall_id: c.scryfall_id, name: c.name, set: c.set, set_name: c.set_name, collector_number: c.collector_number,
         rarity: c.rarity, image: c.image, image_small: c.image_small, finishOptions: opts, surgePrint: c.surgePrint,
-        quotes: quoteCard(c), qty, finish,
+        quotes: quoteCard(c, quoteOpts), qty, finish,
       });
     }
   }
-  res.json({ cards: [...merged.values()], missing, truncated, deckName, source });
-}));
+  return { cards: [...merged.values()], missing, truncated, deckName, source };
+}
 
 // trae varias cartas de Scryfall por id (de a 75)
 async function cardsById(ids) {
@@ -1027,7 +1032,8 @@ app.get('/api/cuenta/credito', (req, res) => {
 app.post('/api/pedidos', asyncH(async (req, res) => {
   const { items, customer, useCredit } = req.body || {};
   const user = currentUser(req);
-  if (config.requireAccount && !user) return res.status(401).json({ error: 'Ingresá o creá una cuenta para hacer el pedido', needLogin: true });
+  // para comprar hace falta una cuenta verificada, sin excepción
+  if (!user) return res.status(401).json({ error: 'Ingresá o creá una cuenta para hacer el pedido', needLogin: true });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'El carrito está vacío' });
   if (!customer?.name?.trim()) return res.status(400).json({ error: 'Falta tu nombre' });
   const lines = [], problems = [];
@@ -1178,7 +1184,7 @@ app.get('/api/admin/config', (req, res) => res.json(adminConfigView()));
 app.put('/api/admin/config', asyncH(async (req, res) => {
   const b = req.body || {};
   const allowed = ['storeName', 'tagline', 'whatsapp', 'instagram', 'currency', 'dollarRate', 'dollarType', 'autoDollar',
-    'markupPercent', 'roundTo', 'minPrice', 'conditionFactors', 'useScryfallFallback', 'hideOutOfPrice', 'requireAccount',
+    'markupPercent', 'roundTo', 'minPrice', 'conditionFactors', 'useScryfallFallback', 'hideOutOfPrice',
     'buyEnabled', 'buyCashPercent', 'buyCreditPercent', 'buyMinOffer', 'buyRoundTo',
     'buyRequirePhotos', 'buyPhotosEmail'];
   for (const k of allowed) if (k in b) config[k] = b[k];
@@ -1262,7 +1268,29 @@ app.post('/api/admin/inventario', asyncH(async (req, res) => {
 
 // importar lista de texto (formato Arena/Moxfield/MTGO)
 app.post('/api/admin/importar', asyncH(async (req, res) => {
-  const { text, condition = 'NM', lang = 'en', finish: defFinish, foil = false, preview = false } = req.body || {};
+  const { text, items, condition = 'NM', lang = 'en', finish: defFinish, foil = false, preview = false } = req.body || {};
+  // filas ya previsualizadas y corregidas a mano (edición, acabado y cantidad por carta)
+  if (Array.isArray(items)) {
+    const rows = items.filter((it) => it && it.scryfall_id && parseInt(it.qty, 10) > 0);
+    if (!rows.length) return res.status(400).json({ error: 'No hay cartas para importar' });
+    if (rows.length > 1000) return res.status(400).json({ error: 'Máximo 1000 líneas por importación' });
+    const cards = new Map();
+    const ids = [...new Set(rows.map((it) => String(it.scryfall_id)))];
+    for (let i = 0; i < ids.length; i += 75) {
+      const json = await scryfall('/cards/collection', { method: 'POST', body: JSON.stringify({ identifiers: ids.slice(i, i + 75).map((id) => ({ id })) }) });
+      for (const c of json?.data || []) cards.set(c.id, mapCard(c));
+    }
+    let added = 0, merged = 0; const missing = [];
+    for (const it of rows) {
+      const card = cards.get(String(it.scryfall_id));
+      if (!card) { missing.push(String(it.raw || it.scryfall_id)); continue; }
+      const r = addToInventory(card, { finish: normalizeFinish(it.finish), condition, lang, qty: it.qty });
+      fixScryfallUsd(r.item);
+      r.merged ? merged++ : added++;
+    }
+    await saveInventory();
+    return res.json({ added, merged, missing });
+  }
   const defaultFinish = normalizeFinish(defFinish, foil);
   const lineFinish = (line, card) => resolveFinish(card, line.finish || defaultFinish);
   const parsed = String(text || '').split(/\r?\n/).map(parseListLine).filter(Boolean);
@@ -1362,6 +1390,14 @@ app.delete('/api/admin/inventario/:id', asyncH(async (req, res) => {
 app.post('/api/admin/legalidades/actualizar', asyncH(async (req, res) => {
   await refreshLegalities({ force: true });
   res.json({ updatedAt: legal.updatedAt, error: legal.error });
+}));
+
+// cotizador del panel: mismo cálculo que "Vendé tus cartas", pero muestra el valor aunque quede bajo el mínimo de compra
+app.post('/api/admin/cotizar', asyncH(async (req, res) => {
+  try {
+    const r = await quoteList(req.body?.text, { ignoreMin: true });
+    res.json({ ...r, cashPercent: Number(config.buyCashPercent) || 0, creditPercent: Number(config.buyCreditPercent) || 0, minOffer: Number(config.buyMinOffer) || 0, currency: config.currency });
+  } catch (e) { if (e.status) return res.status(e.status).json({ error: e.message }); throw e; }
 }));
 
 const adminOrder = (o) => ({ ...o, items: withItemImages(o.items), customer: decryptCustomer(o.customer), messages: orderMessages(o), unread: unreadFor(o, 'tienda') });

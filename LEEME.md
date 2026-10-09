@@ -53,7 +53,7 @@ La legalidad de cada carta en cada formato sale de Scryfall.
 ### Cuentas de clientes y seguridad
 
 - **Registro:** los clientes se registran con su **mail** y una contraseña de 8 caracteres como mínimo. Con la cuenta, los datos se completan solos al comprar, y en *Mis pedidos* ven su historial y el estado de cada pedido.
-- **Exigir cuenta:** en *Configuración → Exigir cuenta para hacer pedidos* decidís si se puede comprar sin cuenta.
+- **Cuenta obligatoria:** para hacer un pedido hay que tener una cuenta verificada. No se puede comprar sin cuenta.
 - **Contraseñas:** se guardan como **hash scrypt**. No se pueden ver ni descifrar, ni siquiera desde el panel. Si alguien la olvida, en *Panel → Clientes → Nueva contraseña* le asignás una y se la pasás.
 - **Mail, nombre y datos de los pedidos (nombre, teléfono, nota):** se guardan **cifrados con AES-256-GCM** en `usuarios.json` y `pedidos.json`. El panel los descifra solo para mostrártelos.
 - **Clave de cifrado:** está en `data/clave-secreta.txt` y se crea sola la primera vez. **Guardala en un lugar seguro:** sin ella, esos datos no se pueden recuperar.
@@ -109,7 +109,7 @@ La pestaña **Cotizar cartas** del panel calcula cuánto pagar por las cartas de
 - La pestaña **Pedidos** es un tablero con columnas: **Nuevo pedido → En preparación → Preparado → Pagado → Entregado / Cancelado**. Cada pedido se minimiza o agranda con un clic (o todos juntos con los botones de arriba) y se mueve de etapa con el botón del siguiente paso, con el desplegable de estado o arrastrándolo a otra columna. Los cancelados quedan marcados en rojo.
 - En **Pedidos**, el botón **✔ Marcar preparado** (o el estado `preparado`) le avisa al cliente: en la tienda le aparece un globito rojo en su cuenta y, en **Mis pedidos**, el cartel "¡Tu pedido está listo para retirar!". El panel te muestra si ya vio el aviso.
 - Cada pedido tiene un **chat** para coordinar el retiro. Los mensajes nuevos del cliente se marcan con un número en la pestaña Pedidos; los tuyos, con el globito en la cuenta del cliente. Los mensajes se guardan cifrados.
-- Los avisos y el chat funcionan solo en pedidos hechos **con cuenta**. Si pidió sin cuenta, coordiná por WhatsApp (o activá "exigir cuenta" en Configuración).
+- Los avisos y el chat funcionan solo en pedidos hechos **con cuenta**. Los pedidos viejos hechos sin cuenta (de cuando no era obligatoria) se coordinan por WhatsApp.
 
 ### Cómo se calcula el precio
 
