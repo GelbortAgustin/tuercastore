@@ -95,7 +95,11 @@ function bindUi() {
     const add = e.target.closest('[data-add]');
     if (add) return addToCart(add.dataset.add, 1);
     const open = e.target.closest('[data-open]');
-    if (open) openDetail(open.dataset.open);
+    if (open) return openDetail(open.dataset.open);
+    if (e.target.closest('[data-wish]')) {
+      const q = $('#q').value.trim();
+      state.user ? openWishlist(q) : (toast('Ingresá o creá una cuenta para armar tu wishlist'), openAuth('ingresar', () => openWishlist(q)));
+    }
   });
 
   $('#openCart').addEventListener('click', openCart);
@@ -109,11 +113,8 @@ function bindUi() {
     const r = e.target.closest('[data-remove]');
     if (r) { state.cart = state.cart.filter((c) => c.id !== r.dataset.remove); saveCart(); }
   });
-  $('#goCheckout').addEventListener('click', async () => {
-    // confirma con el servidor que la sesión sigue activa (pudo vencer o cerrarse en otra pestaña)
-    const btn = $('#goCheckout'); btn.disabled = true;
-    await loadAccount();
-    btn.disabled = false;
+  $('#goCheckout').addEventListener('click', () => {
+    // los pedidos se hacen siempre con cuenta
     if (!state.user) {
       const again = () => { openCart(); $('#goCheckout').click(); };
       if (state.pending) { toast('Confirmá tu cuenta con el código para hacer el pedido'); return openVerify({ sentTo: state.pending.contact }, again); }
@@ -165,7 +166,8 @@ function render() {
   const list = state.products.filter(matches).sort((a, b) => banRank(a) - banRank(b) || sorters[state.sort](a, b));
   $('#resultCount').textContent = `${list.length.toLocaleString('es-AR')} resultado${list.length === 1 ? '' : 's'}`;
   if (!list.length) {
-    $('#grid').innerHTML = `<div class="empty" style="grid-column:1/-1"><img src="/logo.svg" alt="">${state.products.length ? 'No hay cartas que coincidan con tu búsqueda.' : 'Todavía no hay cartas cargadas. ¡Volvé pronto!'}</div>`;
+    $('#grid').innerHTML = `<div class="empty" style="grid-column:1/-1"><img src="/logo.svg" alt="">${state.products.length ? 'No hay cartas que coincidan con tu búsqueda.' : 'Todavía no hay cartas cargadas. ¡Volvé pronto!'}
+      <div style="margin-top:14px"><button class="btn sm" data-wish>♡ Avisame cuando entre</button></div></div>`;
     $('#more').classList.add('hidden');
     return;
   }
@@ -357,7 +359,7 @@ function prefillCheckout() {
   const u = state.user; const f = $('#checkout');
   if (!u || !f) return;
   if (!f.name.value) f.name.value = u.name;
-  if (!f.phone.value && u.phone) f.phone.value = u.phone;
+  if (!f.phone.value && (u.phone || u.whatsapp)) f.phone.value = u.phone || u.whatsapp;
 }
 
 // opción de pagar con crédito de tienda en el checkout

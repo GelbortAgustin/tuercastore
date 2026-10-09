@@ -9,7 +9,8 @@ Tienda online de singles de Magic: The Gathering.
 - **Cuentas de clientes**: registro con mail y contraseña, verificado con un código que llega al mail. Los datos personales se guardan cifrados.
 - **Vendé tus cartas**: los clientes cotizan y te venden cartas al **50% en dinero** o **75% en crédito de tienda**. Los porcentajes se configuran.
 - **Crédito de tienda**: cada cliente tiene su saldo con historial de movimientos y lo puede usar al pagar sus pedidos.
-- **Pedidos**: el cliente arma el carrito y el pedido llega a tu panel. Además se abre WhatsApp con el detalle listo para enviar.
+- **Pedidos**: el cliente arma el carrito y el pedido llega a tu panel. Además se abre WhatsApp con el detalle listo para enviar. Para pedir hace falta tener cuenta.
+- **Wishlist**: cada cliente anota las cartas que busca y se le avisa cuando entran en stock.
 
 ## Cómo usarla
 
@@ -53,7 +54,7 @@ La legalidad de cada carta en cada formato sale de Scryfall.
 ### Cuentas de clientes y seguridad
 
 - **Registro:** los clientes se registran con su **mail** y una contraseña de 8 caracteres como mínimo. Con la cuenta, los datos se completan solos al comprar, y en *Mis pedidos* ven su historial y el estado de cada pedido.
-- **Cuenta obligatoria:** para hacer un pedido hay que tener una cuenta verificada. No se puede comprar sin cuenta.
+- **Cuenta obligatoria:** para hacer un pedido hay que ingresar con una cuenta verificada. El servidor rechaza los pedidos sin cuenta. Ojo: en la tienda publicada, si el envío de mails no está configurado no se pueden crear cuentas nuevas, y por lo tanto nadie nuevo puede comprar.
 - **Contraseñas:** se guardan como **hash scrypt**. No se pueden ver ni descifrar, ni siquiera desde el panel. Si alguien la olvida, en *Panel → Clientes → Nueva contraseña* le asignás una y se la pasás.
 - **Mail, nombre y datos de los pedidos (nombre, teléfono, nota):** se guardan **cifrados con AES-256-GCM** en `usuarios.json` y `pedidos.json`. El panel los descifra solo para mostrártelos.
 - **Clave de cifrado:** está en `data/clave-secreta.txt` y se crea sola la primera vez. **Guardala en un lugar seguro:** sin ella, esos datos no se pueden recuperar.
@@ -109,7 +110,16 @@ La pestaña **Cotizar cartas** del panel calcula cuánto pagar por las cartas de
 - La pestaña **Pedidos** es un tablero con columnas: **Nuevo pedido → En preparación → Preparado → Pagado → Entregado / Cancelado**. Cada pedido se minimiza o agranda con un clic (o todos juntos con los botones de arriba) y se mueve de etapa con el botón del siguiente paso, con el desplegable de estado o arrastrándolo a otra columna. Los cancelados quedan marcados en rojo.
 - En **Pedidos**, el botón **✔ Marcar preparado** (o el estado `preparado`) le avisa al cliente: en la tienda le aparece un globito rojo en su cuenta y, en **Mis pedidos**, el cartel "¡Tu pedido está listo para retirar!". El panel te muestra si ya vio el aviso.
 - Cada pedido tiene un **chat** para coordinar el retiro. Los mensajes nuevos del cliente se marcan con un número en la pestaña Pedidos; los tuyos, con el globito en la cuenta del cliente. Los mensajes se guardan cifrados.
-- Los avisos y el chat funcionan solo en pedidos hechos **con cuenta**. Los pedidos viejos hechos sin cuenta (de cuando no era obligatoria) se coordinan por WhatsApp.
+- Los pedidos viejos hechos sin cuenta (de cuando no era obligatoria) no tienen avisos ni chat: coordiná por WhatsApp.
+
+### Wishlist y avisos de stock
+
+- **Cliente:** en su cuenta, *Mi wishlist*. Busca la carta por nombre y la agrega (hasta 100). Si busca en la tienda algo que no hay, el botón *Avisame cuando entre* la lleva directo ahí. Opcionalmente deja su **WhatsApp**.
+- **Cuándo se avisa:** cuando una carta de su lista pasa de no tener stock a tenerlo (en cualquier edición, acabado o estado), sea porque la cargaste, la importaste, completaste una compra o se canceló un pedido. Si se agota y vuelve a entrar, se avisa de nuevo. Si la carta ya estaba en stock al agregarla, no se manda aviso: la ve como "En stock" en su lista.
+- **Por mail:** sale solo, con el precio y el link a cada carta. Usa el mismo envío de mails que la verificación de cuentas; si no está configurado, no se manda.
+- **Por WhatsApp:** WhatsApp no permite mandar mensajes automáticos sin la API paga de Meta, así que el aviso queda en *Panel → Clientes → Wishlists* (con un número en la pestaña) y lo mandás con un clic en *Avisar por WhatsApp*: se abre tu WhatsApp con el número del cliente y el mensaje ya escrito.
+- **Cartas más buscadas:** en ese mismo recuadro ves qué cartas piden tus clientes y cuántos las quieren, para saber qué conviene conseguir.
+- **Links de los avisos:** en Railway se arman solos. Si usás dominio propio, definí la variable `PUBLIC_URL` (por ejemplo `https://tuercastore.com`).
 
 ### Cómo se calcula el precio
 

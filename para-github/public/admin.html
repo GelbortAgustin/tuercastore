@@ -42,7 +42,7 @@
         <button role="tab" data-tab="pedidos" aria-selected="false">Pedidos <span class="pill hidden" id="pendingPill"></span></button>
         <button role="tab" data-tab="compras" aria-selected="false">Compras <span class="pill hidden" id="salesPill"></span></button>
         <button role="tab" data-tab="cotizar" aria-selected="false">Cotizar cartas</button>
-        <button role="tab" data-tab="clientes" aria-selected="false">Clientes</button>
+        <button role="tab" data-tab="clientes" aria-selected="false">Clientes <span class="pill hidden" id="wishPill"></span></button>
         <button role="tab" data-tab="config" aria-selected="false">Configuración</button>
       </nav>
 
@@ -150,6 +150,7 @@ o el link de un mazo público de Archidekt"></textarea></label>
 
       <!-- CLIENTES -->
       <section data-panel="clientes" class="hidden">
+        <div class="card-box wish-box" id="wishBox"></div>
         <div class="row-form" style="margin-bottom:12px">
           <input class="input" id="cliFilter" placeholder="Buscar por nombre, mail o celular…" style="flex:2 1 240px">
         </div>

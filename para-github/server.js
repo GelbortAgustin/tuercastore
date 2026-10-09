@@ -92,7 +92,8 @@ for (const u of users) if (u.verified === undefined) u.verified = true;
 const verifier = createVerifier({ getConfig: () => config, decrypt: sec.decrypt, isProd: IS_PROD, storeName: () => config.storeName || 'Tuerca Store' });
 await writeJson(FILES.config, config);
 
-const saveInventory = () => writeJson(FILES.inventory, inventory);
+// cada vez que cambia el stock se revisan las wishlists (avisos de "entró en stock")
+const saveInventory = () => { wishlistTick(); return writeJson(FILES.inventory, inventory); };
 const saveOrders = () => writeJson(FILES.orders, orders);
 const saveUsers = () => writeJson(FILES.users, users);
 const saveSales = () => writeJson(FILES.sales, sales);
@@ -611,7 +612,7 @@ const publicUser = (u) => {
   const contact = sec.decrypt(u.contact);
   return {
     id: u.id, name: sec.decrypt(u.name), contactType: u.type, contact: sec.maskContact(contact),
-    phone: u.type === 'phone' ? contact : '', verified: !!u.verified,
+    phone: u.type === 'phone' ? contact : '', whatsapp: userWhatsapp(u), verified: !!u.verified,
     credit: creditBalance(u.id),
     notifications: userNotices(u.id),
   };
@@ -1029,11 +1030,136 @@ app.get('/api/cuenta/credito', (req, res) => {
   res.json({ balance: creditBalance(u.id), currency: config.currency, movements: mv });
 });
 
+// ---- wishlist: cartas que el cliente busca; se le avisa cuando entran en stock
+// Se guarda en la cuenta (u.wishlist). El aviso por mail sale solo; el de WhatsApp queda pendiente en
+// Panel → Clientes, con el mensaje ya escrito para mandarlo con un clic.
+const MAX_WISH = 100;
+const wishLimit = sec.rateLimiter({ max: 60, windowMs: 60e3, lockMs: 60e3 });
+const ENV_ORIGIN = String(process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')).replace(/\/+$/, '');
+let siteOrigin = ENV_ORIGIN;
+const stockOf = (name) => inventory.find((i) => i.qty > 0 && i.name === name) || null;
+function userWhatsapp(u) {
+  try { return sec.decrypt(u.whatsapp) || (u.type === 'phone' ? sec.decrypt(u.contact) : ''); } catch { return ''; }
+}
+const wishView = (u) => (u.wishlist || []).map((w) => {
+  const item = stockOf(w.name);
+  return { id: w.id, name: w.name, image: w.image, added_at: w.added_at, stock: item ? { id: item.id, price: priceOf(item).price } : null };
+});
+// cards = [{ name, item }]
+function wishText(userName, cards, { links = false } = {}) {
+  return [
+    `¡Hola ${String(userName).split(' ')[0]}! Te escribimos de ${config.storeName}: ya ${cards.length === 1 ? 'entró en stock la carta que tenías' : 'entraron en stock cartas que tenías'} en tu wishlist:`, '',
+    ...cards.map(({ name, item }) => {
+      const p = priceOf(item).price;
+      return `• ${name}${p != null ? ` — ${fmtMoney(p, config.currency)}` : ''}${links && siteOrigin ? `\n  ${siteOrigin}/?carta=${item.id}` : ''}`;
+    }),
+    ...(siteOrigin && !links ? ['', `Podés verlas y pedirlas acá: ${siteOrigin}`] : []),
+  ].join('\n');
+}
+function wishlistTick() {
+  const inStock = new Map();
+  for (const i of inventory) if (i.qty > 0 && !inStock.has(i.name)) inStock.set(i.name, i);
+  const now = new Date().toISOString();
+  let changed = false;
+  for (const u of users) {
+    if (!u.wishlist?.length) continue;
+    const fresh = [];
+    for (const w of u.wishlist) {
+      const item = inStock.get(w.name);
+      if (item && !w.notifiedAt) { w.notifiedAt = now; fresh.push({ name: w.name, item, entry: w }); changed = true; }
+      // se agotó: vuelve a quedar a la espera, para avisar la próxima vez que entre
+      else if (!item && w.notifiedAt) { w.notifiedAt = null; w.waPending = false; changed = true; }
+    }
+    if (!fresh.length || !u.verified || u.disabled) continue;
+    if (userWhatsapp(u)) for (const f of fresh) f.entry.waPending = true;
+    if (u.type !== 'email') continue;
+    let to, name;
+    try { to = sec.decrypt(u.contact); name = sec.decrypt(u.name); } catch { continue; }
+    verifier.sendMail({
+      to,
+      subject: fresh.length === 1 ? `${fresh[0].name} ya está en stock en ${config.storeName}` : `Entraron ${fresh.length} cartas de tu wishlist en ${config.storeName}`,
+      text: `${wishText(name, fresh, { links: true })}\n\nHay stock limitado: no las reservamos hasta que hagas el pedido.\n\n${config.storeName}`,
+    }).then((sent) => { if (!sent) console.log('[Wishlist] El envío de mails no está configurado: no se pudo avisar por mail.'); })
+      .catch((e) => console.warn('[Wishlist] No se pudo enviar el aviso por mail:', e.message));
+  }
+  if (changed) saveUsers();
+}
+// avisos de WhatsApp que la tienda todavía no mandó
+function wishNotices() {
+  const out = [];
+  for (const u of users) {
+    if (u.disabled || !u.wishlist?.length) continue;
+    const cards = u.wishlist.filter((w) => w.waPending).map((w) => ({ name: w.name, item: stockOf(w.name) })).filter((c) => c.item);
+    const wa = cards.length ? userWhatsapp(u) : '';
+    if (!wa) continue;
+    let name = '';
+    try { name = sec.decrypt(u.name); } catch {}
+    out.push({ userId: u.id, name, whatsapp: wa, cards: cards.map((c) => c.name), url: `https://wa.me/${wa}?text=${encodeURIComponent(wishText(name, cards))}` });
+  }
+  return out;
+}
+
+app.get('/api/cuenta/wishlist', (req, res) => {
+  const u = currentUser(req);
+  if (!u) return res.status(401).json({ error: 'No ingresaste' });
+  res.json({ items: wishView(u), whatsapp: userWhatsapp(u), currency: config.currency, max: MAX_WISH });
+});
+app.get('/api/cuenta/wishlist/buscar', asyncH(async (req, res) => {
+  const u = currentUser(req);
+  if (!u) return res.status(401).json({ error: 'No ingresaste' });
+  const q = String(req.query.q || '').trim().slice(0, 100);
+  if (q.length < 2 || wishLimit.blocked(u.id)) return res.json([]);
+  wishLimit.fail(u.id);
+  const json = await scryfall(`/cards/autocomplete?q=${encodeURIComponent(q)}`);
+  res.json(json?.data || []);
+}));
+app.post('/api/cuenta/wishlist', asyncH(async (req, res) => {
+  const u = currentUser(req);
+  if (!u) return res.status(401).json({ error: 'No ingresaste' });
+  const q = String(req.body?.name || '').trim().slice(0, 150);
+  if (q.length < 2) return res.status(400).json({ error: 'Escribí el nombre de la carta' });
+  if ((u.wishlist || []).length >= MAX_WISH) return res.status(400).json({ error: `Tu wishlist puede tener hasta ${MAX_WISH} cartas. Quitá alguna para agregar otra.` });
+  if (wishLimit.blocked(u.id)) return res.status(429).json({ error: 'Estás yendo muy rápido. Esperá un minuto.' });
+  wishLimit.fail(u.id);
+  let c = null;
+  try { c = await scryfall(`/cards/named?fuzzy=${encodeURIComponent(q)}`); } catch {}
+  if (!c) return res.status(404).json({ error: 'No encontramos esa carta. Probá con el nombre completo, en inglés.' });
+  const card = mapCard(c);
+  const list = (u.wishlist ||= []);
+  if (list.some((w) => w.name === card.name)) return res.status(409).json({ error: `${card.name} ya está en tu wishlist` });
+  const now = new Date().toISOString(), inStock = !!stockOf(card.name);
+  // si ya hay stock no hace falta avisar: el aviso queda para la próxima vez que entre
+  list.unshift({ id: crypto.randomUUID(), name: card.name, image: card.image_small || card.image, added_at: now, notifiedAt: inStock ? now : null });
+  await saveUsers();
+  res.json({ items: wishView(u), added: card.name, inStock });
+}));
+app.delete('/api/cuenta/wishlist/:id', asyncH(async (req, res) => {
+  const u = currentUser(req);
+  if (!u) return res.status(401).json({ error: 'No ingresaste' });
+  u.wishlist = (u.wishlist || []).filter((w) => w.id !== req.params.id);
+  await saveUsers();
+  res.json({ items: wishView(u) });
+}));
+// WhatsApp del cliente para los avisos (opcional)
+app.put('/api/cuenta/whatsapp', asyncH(async (req, res) => {
+  const u = currentUser(req);
+  if (!u) return res.status(401).json({ error: 'No ingresaste' });
+  const raw = String(req.body?.whatsapp || '').trim();
+  if (!raw) { u.whatsapp = ''; for (const w of u.wishlist || []) w.waPending = false; }
+  else {
+    const c = raw.includes('@') ? null : sec.normalizeContact(raw);
+    if (!c) return res.status(400).json({ error: 'Ingresá un número de WhatsApp válido, con código de área (ej: 11 2345 6789)' });
+    u.whatsapp = sec.encrypt(c.value);
+  }
+  await saveUsers();
+  res.json({ user: publicUser(u) });
+}));
+
 app.post('/api/pedidos', asyncH(async (req, res) => {
   const { items, customer, useCredit } = req.body || {};
   const user = currentUser(req);
-  // para comprar hace falta una cuenta verificada, sin excepción
-  if (!user) return res.status(401).json({ error: 'Ingresá o creá una cuenta para hacer el pedido', needLogin: true });
+  // los pedidos se hacen siempre con cuenta verificada
+  if (!user) return res.status(401).json({ error: sessionUser(req) ? 'Confirmá tu cuenta con el código que te enviamos para hacer el pedido' : 'Ingresá o creá una cuenta para hacer el pedido', needLogin: true });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'El carrito está vacío' });
   if (!customer?.name?.trim()) return res.status(400).json({ error: 'Falta tu nombre' });
   const lines = [], problems = [];
@@ -1111,6 +1237,7 @@ function auth(req, res, next) {
   const token = req.get('x-admin-token');
   const exp = token && sessions.get(token);
   if (!exp || exp < Date.now()) return res.status(401).json({ error: 'Sesión vencida, volvé a ingresar' });
+  if (!ENV_ORIGIN) siteOrigin = `${req.protocol}://${req.get('host')}`; // dirección de la tienda para los links de los avisos
   next();
 }
 
@@ -1160,6 +1287,7 @@ app.get('/api/admin/estado', (req, res) => {
     orders: { pending: orders.filter((o) => o.status === 'pendiente').length, unread: orders.reduce((n, o) => n + unreadFor(o, 'tienda'), 0) },
     users: users.length,
     sales: { pending: sales.filter((v) => ['pendiente', 'aceptada'].includes(v.status)).length },
+    wishlist: { pending: wishNotices().length },
     creditTotal: Math.round(users.reduce((s, u) => s + creditBalance(u.id), 0)),
     keyFromEnv: keyInfo.fromEnv,
     currency: config.currency,
@@ -1426,7 +1554,7 @@ app.get('/api/admin/clientes', (req, res) => {
     try { contact = sec.decrypt(u.contact); name = sec.decrypt(u.name); } catch { contact = '(clave de cifrado distinta)'; }
     return {
       id: u.id, type: u.type, contact, name, created_at: u.created_at, last_login: u.last_login, disabled: !!u.disabled,
-      verified: !!u.verified,
+      verified: !!u.verified, whatsapp: userWhatsapp(u), wishlist: (u.wishlist || []).length,
       orders: orders.filter((o) => o.userId === u.id).length,
       sales: sales.filter((v) => v.userId === u.id).length,
       credit: creditBalance(u.id),
@@ -1448,6 +1576,24 @@ app.patch('/api/admin/clientes/:id', (req, res) => {
   if (req.body?.verified === true) { u.verified = true; u.verified_at = new Date().toISOString(); u.verify = {}; }
   saveUsers(); res.json({ ok: true });
 });
+
+// ---- wishlists: avisos de WhatsApp pendientes y cartas más buscadas
+app.get('/api/admin/wishlist', (req, res) => {
+  const wanted = new Map();
+  for (const u of users) for (const w of u.wishlist || []) wanted.set(w.name, (wanted.get(w.name) || 0) + 1);
+  res.json({
+    notices: wishNotices(),
+    wanted: [...wanted].map(([name, count]) => ({ name, count, inStock: !!stockOf(name) }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, 200),
+  });
+});
+app.post('/api/admin/wishlist/:userId/avisado', asyncH(async (req, res) => {
+  const u = users.find((x) => x.id === req.params.userId);
+  if (!u) return res.status(404).json({ error: 'No encontrado' });
+  for (const w of u.wishlist || []) w.waPending = false;
+  await saveUsers();
+  res.json({ ok: true });
+}));
 
 // ---- compras (solicitudes de venta de clientes)
 app.get('/api/admin/ventas', (req, res) => {

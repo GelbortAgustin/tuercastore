@@ -60,6 +60,7 @@ function bindAccount() {
       state.user = null; state.pending = null; renderAccount(); toast('Cerraste sesión');
     }
     if (b.dataset.acc === 'pedidos') openMyOrders();
+    if (b.dataset.acc === 'wishlist') openWishlist();
     if (b.dataset.acc === 'credito') openMyCredit();
     if (b.dataset.acc === 'ventas') openMySales();
     if (b.dataset.acc === 'clave') openChangePassword();
@@ -106,7 +107,7 @@ function openAuth(mode = 'ingresar', after) {
   form.querySelector(reg ? '[name=name]' : '[name=contact]').focus();
   if (reg) fetch('/api/cuenta/opciones').then((r) => r.json()).then((o) => {
     if (!o.email) {
-      $('#authErr').textContent = 'El registro de cuentas nuevas no está disponible por el momento. Escribinos y te ayudamos con tu pedido.';
+      $('#authErr').textContent = 'El registro de cuentas nuevas no está disponible por el momento.';
       $('#authErr').classList.remove('hidden'); form.querySelector('[type=submit]').disabled = true;
     }
   }).catch(() => {});
@@ -274,6 +275,75 @@ function openChangePassword() {
   });
 }
 
+// wishlist: cartas que el cliente busca; la tienda le avisa cuando entran en stock
+// `prefill` = nombre para dejar escrito en el buscador (por ejemplo, lo que buscó en la tienda y no había)
+async function openWishlist(prefill = '') {
+  showModal('<div class="spinner"></div>');
+  const r = await fetch('/api/cuenta/wishlist');
+  if (!r.ok) { closeAll(); return openAuth('ingresar', () => openWishlist(prefill)); }
+  const j = await r.json();
+  showModal(`<div class="myorders wishlist">
+    <h2>Mi wishlist</h2>
+    <p class="muted" style="margin:0 0 10px">Anotá las cartas que estás buscando. Cuando entren en stock te avisamos por mail, y también por WhatsApp si nos dejás tu número.</p>
+    <form id="wishAdd" class="wish-row">
+      <input class="input" name="name" list="wishAc" maxlength="150" autocomplete="off" required placeholder="Nombre de la carta (en inglés)…" aria-label="Carta para agregar" value="${esc(prefill)}">
+      <datalist id="wishAc"></datalist>
+      <button class="btn primary">Agregar</button>
+    </form>
+    <div id="wishItems"></div>
+    <form id="wishWa">
+      <label class="field"><span>WhatsApp para los avisos (opcional)</span>
+        <div class="wish-row"><input class="input" name="whatsapp" type="tel" maxlength="30" autocomplete="tel" placeholder="11 2345 6789" value="${esc(j.whatsapp || '')}"><button class="btn">Guardar</button></div>
+        <span class="hint">Con código de área. Si lo dejás vacío, te avisamos solo por mail.</span>
+      </label>
+    </form>
+  </div>`);
+  const paint = (items) => {
+    $('#wishItems').innerHTML = items.length ? items.map((w) => `<div class="wish-item">
+      ${w.image ? `<img src="${esc(w.image)}" alt="" loading="lazy">` : '<span></span>'}
+      <div><b>${esc(w.name)}</b>
+        ${w.stock ? `<small class="in">● En stock${w.stock.price != null ? ` · ${money(w.stock.price, j.currency)}` : ''} · <a href="/?carta=${encodeURIComponent(w.stock.id)}">Ver carta</a></small>`
+          : '<small class="muted">Sin stock · te avisamos cuando entre</small>'}</div>
+      <button class="btn ghost sm danger" data-unwish="${esc(w.id)}">Quitar</button>
+    </div>`).join('') : '<div class="empty" style="padding:30px 20px">Tu wishlist está vacía.</div>';
+  };
+  paint(j.items);
+  const add = $('#wishAdd');
+  add.name.focus();
+  add.name.addEventListener('input', debounce(async () => {
+    const q = add.name.value.trim(); if (q.length < 2) return;
+    try {
+      const names = await fetch('/api/cuenta/wishlist/buscar?q=' + encodeURIComponent(q)).then((x) => (x.ok ? x.json() : []));
+      $('#wishAc').innerHTML = names.map((n) => `<option value="${esc(n)}">`).join('');
+    } catch {}
+  }, 250));
+  add.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('button', add); btn.disabled = true;
+    try {
+      const r2 = await fetch('/api/cuenta/wishlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: add.name.value }) });
+      const k = await r2.json().catch(() => ({}));
+      if (!r2.ok) throw new Error(k.error || 'No se pudo agregar');
+      add.reset(); $('#wishAc').innerHTML = ''; paint(k.items);
+      toast(k.inStock ? `${k.added} ya está en stock` : `Te avisamos cuando entre ${k.added}`);
+    } catch (err) { toast(err.message, true); }
+    finally { btn.disabled = false; add.name.focus(); }
+  });
+  $('#wishItems').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-unwish]'); if (!b) return;
+    const r2 = await fetch(`/api/cuenta/wishlist/${encodeURIComponent(b.dataset.unwish)}`, { method: 'DELETE' });
+    if (r2.ok) paint((await r2.json()).items);
+  });
+  $('#wishWa').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const r2 = await fetch('/api/cuenta/whatsapp', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ whatsapp: e.target.whatsapp.value }) });
+    const k = await r2.json().catch(() => ({}));
+    if (!r2.ok) return toast(k.error || 'No se pudo guardar', true);
+    state.user = k.user; renderAccount();
+    e.target.whatsapp.value = k.user.whatsapp || '';
+    toast(k.user.whatsapp ? 'Listo: también te avisamos por WhatsApp' : 'Te avisamos solo por mail');
+  });
+}
 
 const SALE_ST = { pendiente: 'Pendiente', aceptada: 'Aceptada', completada: 'Completada', rechazada: 'Rechazada', cancelada: 'Cancelada' };
 
